@@ -37,7 +37,7 @@ remembers up to 64 signals and survives power-off.
 | Storage | **Onboard 1 KB EEPROM now**, behind a swappable **storage interface** so an external chip can be added later |
 | Build tool | **Arduino IDE** (a `.ino` sketch + `.h`/`.cpp` helper files) |
 | Board | Arduino **Uno or Nano** (ATmega328P): 32 KB flash, 2 KB RAM, 1 KB EEPROM |
-| IR library | **IRremote** by Armin Joachimsmeyer, **v4.x** — *pin the exact version here once installed:* `IRremote vX.Y.Z` |
+| IR library | **IRremote** (Arduino-IRremote) **v4.7.1** (pinned) — [github](https://github.com/Arduino-IRremote/Arduino-IRremote). v4 = software-PWM send ⇒ **any** send pin |
 
 ---
 
@@ -56,13 +56,13 @@ remembers up to 64 signals and survives power-off.
 
 ## 5. Hardware quick-reference
 
-Suggested pin map (all pins centralized in `config.h`; freely movable **except
-IR send = D3**, which is fixed by the library's carrier timer):
+Suggested pin map (all pins centralized in `config.h` and **all freely movable**
+— IRremote 4.x uses software PWM, so even the IR send pin is not fixed):
 
 | Pin | Role | | Pin | Role |
 |---|---|---|---|---|
 | D2 | IR receiver OUT | | D9 | Switch bit 2 |
-| **D3** | IR emitter (via transistor) ⚠️fixed | | D10 | Switch bit 3 |
+| **D3** | IR emitter (via transistor) | | D10 | Switch bit 3 |
 | D4 | Button READ | | D11 | Switch bit 4 |
 | D5 | Button STORE | | D12 | Switch bit 5 (MSB) |
 | D6 | Button SEND | | D13 | Sending LED (onboard) |
@@ -71,7 +71,8 @@ IR send = D3**, which is fixed by the library's carrier timer):
 
 - Buttons/switches: `INPUT_PULLUP`, other leg to **GND** → **pressed/closed = LOW**.
 - IR LED driven through a **transistor** (more range); don't drive from the pin directly.
-- ⚠️ Don't use PWM/`analogWrite()`/`tone()` on **pins 3 & 11** while IR is active.
+- ⚠️ Avoid `analogWrite()`/`tone()` anywhere — they disturb the IR **receive**
+  timer. Our design doesn't use them (LEDs are plain `digitalWrite`).
 
 ---
 
@@ -124,7 +125,7 @@ storage_is_used(addr) / storage_clear(addr) / storage_format / storage_free_byte
 
 - [ ] **Start Phase 0:** create the `IRR/` sketch folder with `config.h` (pin map
       from §5) and empty module files; add a serial "hello" banner.
-- [ ] Human: install IRremote, **record its exact version in §3**.
+- [x] Human installed **IRremote v4.7.1** (recorded in §3).
 - [ ] Human: confirm board (Uno vs Nano) and that *Blink* uploads.
 - [ ] Then Phase 1 (inputs & feedback).
 
@@ -135,3 +136,4 @@ storage_is_used(addr) / storage_clear(addr) / storage_format / storage_free_byte
 | Date | Who | What changed |
 |---|---|---|
 | 2026-06-19 | Claude | Kickoff Q&A; wrote `project_plan.md` + `session_context.md`. No code yet (by request). |
+| 2026-06-19 | Claude | Pinned IRremote **v4.7.1**; verified library APIs; corrected send-pin note (v4 software PWM ⇒ any pin); added plan §3.6. |

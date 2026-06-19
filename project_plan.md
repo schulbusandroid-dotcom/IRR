@@ -37,7 +37,7 @@ mark/space, pull-up, debounce…), it's defined there.
 | **Storage** | **Onboard EEPROM now**, behind a swappable storage interface | Fits today's hardware; external memory chip can be added later with no rewrite |
 | **Build tool** | **Arduino IDE** | Simplest to upload; project is a `.ino` sketch + helper files |
 | **Board** | Arduino **Uno or Nano** (both ATmega328P) | 32 KB flash, 2 KB RAM, **1 KB EEPROM** — identical for our purposes |
-| **IR library** | **IRremote** (Armin Joachimsmeyer), v4.x, version pinned | De-facto standard; supports both decode and raw send |
+| **IR library** | **IRremote** (Arduino-IRremote), pinned at **v4.7.1** | De-facto standard; both decode and raw send — [repo](https://github.com/Arduino-IRremote/Arduino-IRremote) |
 
 ---
 
@@ -61,7 +61,7 @@ mark/space, pull-up, debounce…), it's defined there.
 | — | Breadboard + jumper wires | |
 | *(future)* | I²C EEPROM (24LC256) + 2× 4.7 kΩ | Optional external storage upgrade (Phase 7) |
 
-### 2.2 Suggested pin map (flexible — except IR send, see note)
+### 2.2 Suggested pin map (all pins flexible)
 
 > All pins live in **one file, `config.h`**, so you can re-wire freely and just
 > change the numbers in one place.
@@ -70,7 +70,7 @@ mark/space, pull-up, debounce…), it's defined there.
 |---|---|---|---|
 | D0 / D1 | USB Serial (RX/TX) | — | **Reserved** — don't use for anything else |
 | **D2** | IR receiver OUT | INPUT | Any digital pin works |
-| **D3** | IR emitter (via transistor) | OUTPUT | **Effectively fixed** — see ⚠️ below |
+| **D3** | IR emitter (via transistor) | OUTPUT | Any pin works (software PWM) — suggestion only |
 | **D4** | Button: READ | INPUT_PULLUP | Pressed = LOW |
 | **D5** | Button: STORE | INPUT_PULLUP | Pressed = LOW |
 | **D6** | Button: SEND | INPUT_PULLUP | Pressed = LOW |
@@ -78,17 +78,18 @@ mark/space, pull-up, debounce…), it's defined there.
 | **D8** | Switch bit 1 | INPUT_PULLUP | |
 | **D9** | Switch bit 2 | INPUT_PULLUP | |
 | **D10** | Switch bit 3 | INPUT_PULLUP | |
-| **D11** | Switch bit 4 | INPUT_PULLUP | ⚠️ avoid PWM here while IR active |
+| **D11** | Switch bit 4 | INPUT_PULLUP | |
 | **D12** | Switch bit 5 (MSB) | INPUT_PULLUP | |
 | **D13** | Sending indicator | OUTPUT | Onboard LED |
 | **A0** | Error indicator LED | OUTPUT | Used as a normal digital pin |
 
-⚠️ **IR send pin is special.** The IRremote library generates the 38 kHz
-carrier with a hardware timer (Timer2 on the Uno/Nano). That timer's output is
-physically tied to **pin D3**. So the *send* pin is not freely movable unless we
-reconfigure the library. Practical rule: **do not use `analogWrite()` (PWM) or
-`tone()` on pins 3 and 11 while IR is active.** Everything else on the map is
-free to move.
+✅ **Good news — every pin above is freely movable** (just change `config.h`).
+In IRremote 4.x the carrier is generated in *software* by default, so the IR
+**send pin is no longer tied to a hardware-timer pin** (the old "must be D3"
+rule is gone). The one caution is unrelated to our pin choice: the **receive**
+side uses a timer that clashes with `analogWrite()` (PWM) and `tone()`. Our
+design uses **neither** — LEDs are plain on/off `digitalWrite` — so there's no
+conflict. Just don't add `tone()`/PWM later without reading §3.6.
 
 ### 2.3 Wiring notes
 
@@ -228,17 +229,44 @@ Your specific worry. Three concrete mechanisms:
 1. **Raw fallback** — if the library can't decode it, we still capture and
    replay the raw timing. Nothing is "unsupported."
 2. **Big enough capture buffer** — `RAW_BUFFER_LENGTH` (in `config.h`) is set
-   large enough for long frames. Bigger buffer = more RAM used, so there's a
-   sensible cap.
+   large enough for long frames (library default **200**; ~100 covers normal
+   48-bit protocols, big AC remotes need up to ~750). Bigger buffer = more RAM
+   used, so there's a sensible cap.
 3. **Overflow detection** — if a frame is *still* too long for the buffer, the
-   library flags an overflow. We **detect it, refuse to store a truncated
-   signal, and show an error** — instead of silently saving something broken.
+   library sets the `IRDATA_FLAGS_WAS_OVERFLOW` flag. We **detect it, refuse to
+   store a truncated signal, and show an error** — instead of silently saving
+   something broken.
 
 > Reality check: ordinary TV/audio/STB remotes are well within reach. Some
 > **air-conditioner** remotes send hundreds of values and may exceed onboard
 > EEPROM (and even RAM) — those are the realistic case for the **external
 > EEPROM upgrade (Phase 7)** and a larger buffer. The plan handles them by
 > failing loudly and clearly, not by corrupting data.
+
+### 3.6 IRremote 4.7.1 specifics (verified against the library)
+
+Repo: <https://github.com/Arduino-IRremote/Arduino-IRremote> — pinned at
+**v4.7.1**. The exact identifiers below were confirmed against the library so
+future coding sessions don't have to re-derive them:
+
+- **Send pin is flexible.** v4 makes the 38 kHz carrier in *software* by default
+  (`SEND_PWM_BY_TIMER` not defined) → **any** pin can send. Set it with
+  `IrSender.begin(IR_SEND_PIN)`, or `#define IR_SEND_PIN 3` before
+  `#include <IRremote.hpp>` (the macro form is smaller/faster on AVR).
+- **Receive pin is flexible** via `IrReceiver.begin(IR_RECEIVE_PIN, ...)`;
+  receiving uses a hardware timer for 50 µs sampling.
+- **Avoid `tone()` / `analogWrite()` while receiving** — they disturb that timer
+  (`tone()` stops reception; PWM on pins 3 & 11 interferes). We use neither; if
+  ever needed, call `IrReceiver.restartTimer()` afterward.
+- **Capture buffer:** `#define RAW_BUFFER_LENGTH 200` before the include
+  (default 200, must be even; up to ~750 for AC remotes). Bigger = more RAM.
+- **Overflow:** `IrReceiver.decodedIRData.flags & IRDATA_FLAGS_WAS_OVERFLOW`
+  (library then sets `rawlen = 0` to stop repeat flagging) → we refuse to store.
+- **Unknown protocol:** `IrReceiver.decodedIRData.protocol == UNKNOWN` → switch
+  to raw capture/replay.
+- **Raw replay:** `IrSender.sendRaw(uint16_t* timings, uint16_t length,
+  uint8_t frequencyKHz)` at 38 kHz, or `sendRaw_P()` to read the array from
+  flash (PROGMEM) on AVR.
 
 ---
 
@@ -332,7 +360,7 @@ box's IR LED at the TV, set switches to 1, press SEND → TV mutes. 🎉
       clear error signal (no truncated saves).
 - [ ] Extend the EEPROM backend to store/read variable-length raw payloads in
       the heap; **"memory full"** detection + error.
-- [ ] **SEND** replays raw via the library's raw-send (with 38 kHz carrier).
+- [ ] **SEND** replays raw via `IrSender.sendRaw(...)` (38 kHz carrier).
 - [ ] Decide & document the **overwrite/fragmentation** policy.
 
 **How to test:** Use a remote that printed `UNKNOWN` in Phase 2 (or an unusual
@@ -425,9 +453,9 @@ catch errors before you upload — but this is optional and never required.
 | Risk | Mitigation |
 |---|---|
 | 1 KB EEPROM can't hold many raw signals | Heap layout + free-space reporting + "memory full" error; external EEPROM (Phase 7) for scale |
-| "Fancy"/long frames overflow capture | Large `RAW_BUFFER_LENGTH` + overflow detection that refuses truncated saves |
+| "Fancy"/long frames overflow capture | `RAW_BUFFER_LENGTH` 200 (up to ~750) + `IRDATA_FLAGS_WAS_OVERFLOW` detection that refuses truncated saves |
 | EEPROM wear (~100k writes) | Only write on STORE (never in loops); optional checksum to detect corruption |
-| Timer/PWM conflict | IR send fixed to D3; avoid PWM/`tone()` on pins 3 & 11; documented in `config.h` |
+| Timer conflict with PWM/`tone()` | IR **send** is software PWM (any pin); the **receive** timer clashes with `analogWrite()`/`tone()` — our design uses neither (LEDs via `digitalWrite`), so no conflict; see §3.6 |
 | Weak IR send range | Drive the LED via a transistor, not directly from a pin |
 | Library behavior changes between versions | Pin the IRremote major version; record it in `session_context.md` |
 | Beginner friction | One-file pin config, modular code, serial menu, per-phase checklists, glossary |
@@ -465,8 +493,9 @@ catch errors before you upload — but this is optional and never required.
   buttons with no extra parts.
 - **Debounce:** A button physically "chatters" for a few ms when pressed; we
   wait briefly so one press counts once.
-- **PWM / timer:** Hardware that toggles a pin very fast — used to make the
-  38 kHz carrier. It's why the send pin is fixed to D3.
+- **PWM / timer:** Hardware that toggles a pin very fast. IRremote 4.x makes the
+  38 kHz carrier in *software*, so the send pin can be any pin; a timer is used
+  for *receiving*, which is why we avoid `analogWrite()`/`tone()`.
 
 ---
 
