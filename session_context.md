@@ -43,6 +43,7 @@ remembers up to 64 signals and survives power-off.
 | Build tool | **Arduino IDE** (a `.ino` sketch + `.h`/`.cpp` helper files) |
 | Board | Arduino **Uno or Nano** (ATmega328P): 32 KB flash, 2 KB RAM, 1 KB EEPROM |
 | IR library | **IRremote** (Arduino-IRremote) **v4.7.1** (pinned) — [github](https://github.com/Arduino-IRremote/Arduino-IRremote). v4 = software-PWM send ⇒ **any** send pin |
+| Display (opt.) | **I²C SSD1306 128×32** on A4/A5, behind `USE_OLED` (default **off**). 128×32 → 512 B RAM buffer. Additive module, Phase 8. |
 
 ---
 
@@ -78,6 +79,8 @@ Suggested pin map (all pins centralized in `config.h` and **all freely movable**
 - IR LED driven through a **transistor** (more range); don't drive from the pin directly.
 - ⚠️ Avoid `analogWrite()`/`tone()` anywhere — they disturb the IR **receive**
   timer. Our design doesn't use them (LEDs are plain `digitalWrite`).
+- Optional **I²C OLED (SSD1306 128×32)** → A4 (SDA) / A5 (SCL), addr 0x3C,
+  enabled by `USE_OLED` in `config.h`. Spare pins: A1–A3.
 
 ---
 
@@ -95,6 +98,7 @@ firmware/ir.*           IR receive (decode-or-raw) + send   [STUB -> Ph 2/4/5]
 firmware/storage.*      storage_* interface + EEPROM backend [STUB -> Ph 3/5]
 firmware/indicators.*   sending/error LEDs                  [begin/sending real]
 firmware/serialcmd.*    serial test/debug interface         [help/switches real]
+firmware/display.*      optional I²C OLED (USE_OLED)         [no-op stub -> Ph 8]
 ```
 
 Storage interface (keep stable so backends can swap):
@@ -126,6 +130,7 @@ storage_is_used(addr) / storage_clear(addr) / storage_format / storage_free_byte
 5. Raw fallback — fancy remotes: capture/store/replay raw; overflow handling
 6. Robustness + debug polish + docs — edge cases, checksum, test checklist
 7. *(future)* External EEPROM backend — full raw capacity for all 64 slots
+8. *(optional)* OLED status display — I²C SSD1306 128×32, behind `USE_OLED`
 
 ---
 
@@ -134,6 +139,8 @@ storage_is_used(addr) / storage_clear(addr) / storage_format / storage_free_byte
 - [x] **Phase 0 scaffolding** created in `firmware/` (compiles; banner + minimal
       serial `help`/`switches`; all device logic stubbed).
 - [x] Human installed **IRremote v4.7.1** (recorded in §3).
+- [x] **OLED folded into plan** (optional): A4/A5 reserved, `display.*` no-op
+      stub + `USE_OLED` flag in `config.h`, Phase 8 added. Off by default.
 - [ ] **Human:** upload `firmware/firmware.ino`; confirm banner @115200 + `help`;
       confirm board is Uno vs Nano.
 - [ ] **Next session → Phase 1:** implement `inputs_poll()` (millis() debounce +
@@ -149,3 +156,4 @@ storage_is_used(addr) / storage_clear(addr) / storage_format / storage_free_byte
 | 2026-06-19 | Claude | Kickoff Q&A; wrote `project_plan.md` + `session_context.md`. No code yet (by request). |
 | 2026-06-19 | Claude | Pinned IRremote **v4.7.1**; verified library APIs; corrected send-pin note (v4 software PWM ⇒ any pin); added plan §3.6. |
 | 2026-06-19 | Claude | **Phase 0 scaffolding:** created `firmware/` (config.h, signal.h, module stubs, banner, serial help/switches) + root `README.md`. Compiles clean under g++ mock; device logic stubbed for Phase 1+. |
+| 2026-06-19 | Claude | Folded in **optional I²C OLED** (SSD1306 128×32): reserved A4/A5, added `display.*` no-op stub + `USE_OLED` flag, BOM/pin-map/risk/glossary notes, and **Phase 8**. Build still compiles with `USE_OLED 0`. |

@@ -14,6 +14,7 @@
 #include "storage.h"
 #include "indicators.h"
 #include "serialcmd.h"
+#include "display.h"
 
 // The single "current" signal in RAM — your `last_received_data`.
 LearnedSignal last_received_data;
@@ -33,8 +34,10 @@ void setup() {
   storage_begin();
   ir_begin();
   serialcmd_begin();
+  display_begin();        // no-op unless USE_OLED is set (see config.h)
 
   print_banner();
+  display_status(inputs_read_address(), "ready");
 }
 
 void loop() {

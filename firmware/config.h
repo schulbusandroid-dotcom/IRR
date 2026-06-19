@@ -47,6 +47,9 @@
 #define PIN_LED_SENDING   13     // onboard LED
 #define PIN_LED_ERROR     A0     // external LED + ~220 ohm resistor
 
+// Optional I2C OLED (see USE_OLED below) uses the fixed hardware I2C pins
+// A4 = SDA and A5 = SCL. Leave those free. Spare pins: A1, A2, A3.
+
 // ---- Input electrical convention ------------------------------------
 // With INPUT_PULLUP + switch-to-ground, the pin reads LOW when
 // pressed/closed. These names keep the rest of the code readable.
@@ -75,6 +78,17 @@
 
 // Carrier frequency (kHz) used when replaying a RAW signal.
 #define IR_SEND_KHZ         38
+
+// ---- Optional OLED display (I2C SSD1306 128x32) ---------------------
+// OFF by default, so the build stays lean until you wire the panel and
+// install a display library. Set USE_OLED to 1 to enable; then fill in
+// firmware/display.cpp (see project_plan "Phase 8 — Optional OLED").
+// Uses hardware I2C pins A4 (SDA) / A5 (SCL). 128x32 keeps the RAM frame
+// buffer at 512 bytes, leaving room beside the IR capture buffers.
+#define USE_OLED            0
+#define OLED_WIDTH          128
+#define OLED_HEIGHT         32
+#define OLED_I2C_ADDR       0x3C   // common for 128x32 (some panels: 0x3D)
 
 // ---- Storage (onboard EEPROM) layout — v1 PROPOSAL -------------------
 // Finalized in Phase 3 (decoded) and Phase 5 (raw). See project_plan §3.4.

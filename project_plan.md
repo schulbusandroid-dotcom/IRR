@@ -38,6 +38,7 @@ mark/space, pull-up, debounce…), it's defined there.
 | **Build tool** | **Arduino IDE** | Simplest to upload; project is a `.ino` sketch + helper files |
 | **Board** | Arduino **Uno or Nano** (both ATmega328P) | 32 KB flash, 2 KB RAM, **1 KB EEPROM** — identical for our purposes |
 | **IR library** | **IRremote** (Arduino-IRremote), pinned at **v4.7.1** | De-facto standard; both decode and raw send — [repo](https://github.com/Arduino-IRremote/Arduino-IRremote) |
+| **Display (opt.)** | Optional **I²C SSD1306 128×32** on A4/A5, behind a `USE_OLED` flag | Status text; off by default to protect RAM & keep the build lean (Phase 8) |
 
 ---
 
@@ -59,6 +60,7 @@ mark/space, pull-up, debounce…), it's defined there.
 | 1 | 6-way DIP switch (or 6 toggles) | The binary address (0–63) |
 | 1 | 100 nF capacitor | Decoupling across the IR receiver's V/GND (recommended) |
 | — | Breadboard + jumper wires | |
+| *(optional)* | I²C OLED, SSD1306 **128×32** | Status display (Phase 8) — wires to A4/A5, addr 0x3C |
 | *(future)* | I²C EEPROM (24LC256) + 2× 4.7 kΩ | Optional external storage upgrade (Phase 7) |
 
 ### 2.2 Suggested pin map (all pins flexible)
@@ -82,6 +84,8 @@ mark/space, pull-up, debounce…), it's defined there.
 | **D12** | Switch bit 5 (MSB) | INPUT_PULLUP | |
 | **D13** | Sending indicator | OUTPUT | Onboard LED |
 | **A0** | Error indicator LED | OUTPUT | Used as a normal digital pin |
+| **A4** | OLED SDA *(optional)* | I²C | Reserved for the SSD1306; free if unused |
+| **A5** | OLED SCL *(optional)* | I²C | Reserved for the SSD1306; free if unused |
 
 ✅ **Good news — every pin above is freely movable** (just change `config.h`).
 In IRremote 4.x the carrier is generated in *software* by default, so the IR
@@ -124,7 +128,8 @@ firmware/
 ├── ir.h / .cpp        # IR receive (decode-or-raw) + IR send (decoded/raw)
 ├── storage.h / .cpp   # storage INTERFACE + the EEPROM backend
 ├── indicators.h / .cpp# sending LED + error LED patterns
-└── serialcmd.h / .cpp # the serial test/debug command interface
+├── serialcmd.h / .cpp # the serial test/debug command interface
+└── display.h / .cpp   # optional I²C OLED status screen (USE_OLED in config.h)
 ```
 
 **Why split like this?** As a beginner you'll usually only touch `config.h`
@@ -404,6 +409,28 @@ stored simultaneously.
 
 ---
 
+### Phase 8 — *(Optional)* OLED status display
+**Goal:** A small I²C OLED shows live info; the LEDs stay for instant status.
+
+- [ ] Wire an **I²C SSD1306 128×32** to A4 (SDA) / A5 (SCL); set `USE_OLED 1`.
+- [ ] Pick a library — `Adafruit_GFX`+`Adafruit_SSD1306` (512 B buffer at
+      128×32) **or** `U8g2`/`U8x8` (lighter on RAM); pin the version.
+- [ ] Implement `firmware/display.cpp`: `display_begin()` + show the current
+      address/slot, last protocol, and status text ("stored", "memory full",
+      "empty", free bytes).
+- [ ] Refresh **from idle / after an action only — never during an IR READ
+      capture** (keeps the receive timing clean).
+- [ ] Watch RAM: confirm headroom next to the IR buffers (the `USE_OLED` flag
+      lets you build with or without the panel).
+
+**How to test:** With `USE_OLED 1`, the panel shows the address as you flip
+switches and updates after READ/STORE/SEND. With `USE_OLED 0`, the build is
+unchanged (display calls compile to no-ops).
+**Done when:** The OLED mirrors the serial status, and toggling `USE_OLED`
+cleanly includes/excludes it.
+
+---
+
 ## 5. Testing & debugging strategy
 
 Because you do the hardware and you're new to C, the project leans hard on two
@@ -456,6 +483,7 @@ catch errors before you upload — but this is optional and never required.
 | "Fancy"/long frames overflow capture | `RAW_BUFFER_LENGTH` 200 (up to ~750) + `IRDATA_FLAGS_WAS_OVERFLOW` detection that refuses truncated saves |
 | EEPROM wear (~100k writes) | Only write on STORE (never in loops); optional checksum to detect corruption |
 | Timer conflict with PWM/`tone()` | IR **send** is software PWM (any pin); the **receive** timer clashes with `analogWrite()`/`tone()` — our design uses neither (LEDs via `digitalWrite`), so no conflict; see §3.6 |
+| OLED frame buffer vs 2 KB SRAM | Use **128×32** (512 B buffer, not 1 KB); consider a page-buffered/text lib (U8g2/U8x8); keep `USE_OLED` off until wired |
 | Weak IR send range | Drive the LED via a transistor, not directly from a pin |
 | Library behavior changes between versions | Pin the IRremote major version; record it in `session_context.md` |
 | Beginner friction | One-file pin config, modular code, serial menu, per-phase checklists, glossary |
@@ -496,6 +524,10 @@ catch errors before you upload — but this is optional and never required.
 - **PWM / timer:** Hardware that toggles a pin very fast. IRremote 4.x makes the
   38 kHz carrier in *software*, so the send pin can be any pin; a timer is used
   for *receiving*, which is why we avoid `analogWrite()`/`tone()`.
+- **I²C:** A 2-wire bus (SDA + SCL) for talking to peripherals like the OLED.
+  On the Uno/Nano those are pins A4/A5. The optional SSD1306 display uses it.
+- **Frame buffer:** A display library's in-RAM copy of the screen. A 128×32
+  OLED needs 512 bytes; 128×64 needs 1 KB — a lot on a 2 KB chip.
 
 ---
 
