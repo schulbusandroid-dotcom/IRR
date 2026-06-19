@@ -109,15 +109,15 @@ conflict. Just don't add `tone()`/PWM later without reading §3.6.
 
 ## 3. Software architecture
 
-### 3.1 File layout (Arduino IDE sketch folder `IRR/`)
+### 3.1 File layout (Arduino sketch folder `firmware/`)
 
 The Arduino IDE compiles **every** `.ino`, `.cpp`, and `.h` in the sketch
 folder together, so we can keep things tidy in small modules instead of one
 giant file:
 
 ```
-IRR/
-├── IRR.ino            # setup() + loop() + the button state machine (the "glue")
+firmware/
+├── firmware.ino       # setup() + loop() + the button state machine (the "glue")
 ├── config.h           # ALL pin numbers & tunable constants live here
 ├── signal.h           # the LearnedSignal data structure (one IR signal in RAM)
 ├── inputs.h / .cpp    # debounced buttons + read 6 switches → address 0..63
@@ -278,12 +278,12 @@ so the device does something real as early as Phase 4.
 ### Phase 0 — Setup & scaffolding
 **Goal:** Toolchain works; project skeleton exists; you can upload.
 
-- [ ] Install Arduino IDE; install **IRremote** library via Library Manager and
-      **note the exact version** (we pin it in `session_context.md`).
+- [x] Install Arduino IDE; install **IRremote** library (**v4.7.1**, pinned in
+      `session_context.md`).
 - [ ] Pick board (Uno or Nano) and confirm it uploads (run the stock *Blink*).
-- [ ] Create the sketch folder `IRR/` with empty module files and `config.h`
-      holding the pin map from §2.2.
-- [ ] Write the wiring/BOM into the repo (this file already has it).
+- [x] Create the sketch folder `firmware/` with module stub files and `config.h`
+      holding the pin map from §2.2. **(done — compiles clean under g++ mock)**
+- [x] Write the wiring/BOM into the repo (done — plan §2 + `README.md`).
 
 **How to test:** Upload *Blink*; onboard LED blinks. Open Serial Monitor at
 **115200 baud**, see a "hello" banner from an empty sketch.

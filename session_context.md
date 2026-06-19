@@ -21,10 +21,15 @@ remembers up to 64 signals and survives power-off.
 
 ## 2. Status
 
-- **Phase:** Phase 0 (Setup & scaffolding) — **planning complete, no code yet.**
-- **Repo:** only the two planning docs exist (`project_plan.md`,
-  `session_context.md`). No sketch files written yet (this was intentional —
-  the human asked for the plan first).
+- **Phase:** Phase 0 (Setup & scaffolding) — **scaffolding committed.**
+- **Repo:** planning docs + a compiling Arduino **skeleton** in `firmware/`.
+  All device logic is **stubbed** with `TODO (Phase N)` markers; what is *real*:
+  `config.h`, `signal.h`, the module APIs, `inputs_read_address()`, the LED
+  helpers, the serial `help`/`switches` commands, and the startup banner.
+- **Verified:** compiles clean (`-Wall -Wextra`) against a mock `Arduino.h`
+  (no AVR toolchain here). Real on-device upload is the human's Phase 0 check.
+- **Pending human check:** upload `firmware/firmware.ino`, open Serial @115200,
+  confirm the banner + `help`. (This is Phase 0's "Done when".)
 - **Branch:** `claude/great-maxwell-84wfxu`.
 
 ---
@@ -76,17 +81,20 @@ Suggested pin map (all pins centralized in `config.h` and **all freely movable**
 
 ---
 
-## 6. Planned file layout (Arduino sketch folder `IRR/`)
+## 6. File layout (Arduino sketch folder `firmware/`)
+
+Repo root is **not** the sketch folder — the sketch lives in `firmware/` (open
+`firmware/firmware.ino` in the IDE). The docs stay at the repo root.
 
 ```
-IRR.ino            setup()+loop()+button state machine (glue)
-config.h           ALL pins + tunables (RAW_BUFFER_LENGTH, baud, EEPROM consts)
-signal.h           LearnedSignal struct (one IR signal in RAM)
-inputs.h/.cpp      debounced buttons + switches→address(0..63)
-ir.h/.cpp          IR receive (decode-or-raw) + send (decoded/raw)
-storage.h/.cpp     storage_* interface + EEPROM backend
-indicators.h/.cpp  sending/error LED patterns
-serialcmd.h/.cpp   serial test/debug command interface
+firmware/firmware.ino   setup()+loop()+state machine (glue) + serial banner
+firmware/config.h       ALL pins + tunables (RAW_BUFFER_LENGTH, baud, EEPROM)
+firmware/signal.h       LearnedSignal struct (one IR signal in RAM)
+firmware/inputs.*       buttons + switches->address(0..63)  [read_address real]
+firmware/ir.*           IR receive (decode-or-raw) + send   [STUB -> Ph 2/4/5]
+firmware/storage.*      storage_* interface + EEPROM backend [STUB -> Ph 3/5]
+firmware/indicators.*   sending/error LEDs                  [begin/sending real]
+firmware/serialcmd.*    serial test/debug interface         [help/switches real]
 ```
 
 Storage interface (keep stable so backends can swap):
@@ -97,7 +105,7 @@ storage_is_used(addr) / storage_clear(addr) / storage_format / storage_free_byte
 
 ## 7. How to build / test
 
-- **Build:** Arduino IDE → open the `IRR/` sketch → select Uno/Nano → Upload.
+- **Build:** Arduino IDE → open `firmware/firmware.ino` → select Uno/Nano → Upload.
 - **Serial Monitor:** **115200 baud.** Every action prints a plain-English line.
 - **Serial commands** (test without perfect button timing):
   `help`, `switches`, `read`, `store <addr>`, `send <addr>`, `show [<addr>]`,
@@ -123,11 +131,14 @@ storage_is_used(addr) / storage_clear(addr) / storage_format / storage_free_byte
 
 ## 9. Next steps (update me each session)
 
-- [ ] **Start Phase 0:** create the `IRR/` sketch folder with `config.h` (pin map
-      from §5) and empty module files; add a serial "hello" banner.
+- [x] **Phase 0 scaffolding** created in `firmware/` (compiles; banner + minimal
+      serial `help`/`switches`; all device logic stubbed).
 - [x] Human installed **IRremote v4.7.1** (recorded in §3).
-- [ ] Human: confirm board (Uno vs Nano) and that *Blink* uploads.
-- [ ] Then Phase 1 (inputs & feedback).
+- [ ] **Human:** upload `firmware/firmware.ino`; confirm banner @115200 + `help`;
+      confirm board is Uno vs Nano.
+- [ ] **Next session → Phase 1:** implement `inputs_poll()` (millis() debounce +
+      falling-edge), print button events over serial, flesh out `indicators`.
+      Then Phase 2 (IR receive — wire up IRremote per plan §3.6).
 
 ---
 
@@ -137,3 +148,4 @@ storage_is_used(addr) / storage_clear(addr) / storage_format / storage_free_byte
 |---|---|---|
 | 2026-06-19 | Claude | Kickoff Q&A; wrote `project_plan.md` + `session_context.md`. No code yet (by request). |
 | 2026-06-19 | Claude | Pinned IRremote **v4.7.1**; verified library APIs; corrected send-pin note (v4 software PWM ⇒ any pin); added plan §3.6. |
+| 2026-06-19 | Claude | **Phase 0 scaffolding:** created `firmware/` (config.h, signal.h, module stubs, banner, serial help/switches) + root `README.md`. Compiles clean under g++ mock; device logic stubbed for Phase 1+. |
