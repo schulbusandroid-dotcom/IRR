@@ -44,9 +44,17 @@ void loop() {
   // Serial test/debug interface (works now: 'help', 'switches').
   serialcmd_poll();
 
-  // ---- Button state machine (skeleton) ----
-  // inputs_poll() is a Phase 0 stub returning BTN_NONE, so these handlers
-  // do not run yet. Phases 1-5 bring them to life.
+  // ---- Switch address: report changes as you flip the DIP switches ----
+  uint8_t addr;
+  if (inputs_poll_address(&addr)) {
+    Serial.print(F("address = "));
+    Serial.println(addr);
+  }
+
+  // ---- Button state machine ----
+  // Phase 1: debounced presses are reported with serial + LED feedback.
+  // The handlers already do the parts that are real today (an empty
+  // last_received_data, an empty slot) and grow into IR/storage in 2-5.
   switch (inputs_poll()) {
     case BTN_READ:  handle_read();  break;
     case BTN_STORE: handle_store(); break;
@@ -75,24 +83,40 @@ static void print_banner() {
 
 // READ button -> learn a signal into last_received_data.
 static void handle_read() {
-  // TODO (Phase 2/5):
-  //   if (ir_receive(&last_received_data)) { feedback + serial report }
-  //   else { indicator_error(ERR_NO_SIGNAL); }
+  // Phase 2/5 will replace this with: if (ir_receive(&last_received_data))
+  // report the decoded/raw signal, else indicator_error(ERR_NO_SIGNAL).
+  Serial.println(F("READ  (IR capture lands in Phase 2)"));
+  indicator_pulse_sending(60);     // quick "press registered" blink on D13
 }
 
 // STORE button -> save last_received_data at the switch address.
 static void handle_store() {
-  // TODO (Phase 3/5):
-  //   uint8_t addr = inputs_read_address();
-  //   if (last_received_data.type == SIGNAL_EMPTY) error;
-  //   else if (!storage_write(addr, &last_received_data)) error(ERR_MEM_FULL);
+  uint8_t addr = inputs_read_address();
+  Serial.print(F("STORE addr="));
+  Serial.print(addr);
+
+  if (last_received_data.type == SIGNAL_EMPTY) {
+    Serial.println(F("  -> nothing learned yet"));
+    indicator_error(ERR_NO_SIGNAL);
+    return;
+  }
+  // Phase 3/5: storage_write(addr, &last_received_data); error on full heap.
+  Serial.println(F("  -> (storage lands in Phase 3)"));
+  indicator_pulse_sending(60);
 }
 
 // SEND button -> transmit the signal stored at the switch address.
 static void handle_send() {
-  // TODO (Phase 4/5):
-  //   uint8_t addr = inputs_read_address();
-  //   LearnedSignal s;
-  //   if (!storage_read(addr, &s)) error(ERR_EMPTY_SLOT);
-  //   else { indicator_sending(true); ir_send(&s); indicator_sending(false); }
+  uint8_t addr = inputs_read_address();
+  Serial.print(F("SEND  addr="));
+  Serial.print(addr);
+
+  LearnedSignal s;
+  if (!storage_read(addr, &s)) {           // stub returns false -> empty slot
+    Serial.println(F("  -> slot empty"));
+    indicator_error(ERR_EMPTY_SLOT);
+    return;
+  }
+  // Phase 4/5: indicator_sending(true); ir_send(&s); indicator_sending(false);
+  Serial.println(F("  -> (IR send lands in Phase 4)"));
 }

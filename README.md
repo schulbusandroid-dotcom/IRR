@@ -8,9 +8,12 @@ remembers up to 64 signals.
 
 ## Status
 
-**Phase 0 — scaffolding.** The firmware skeleton in [`firmware/`](./firmware)
-compiles, uploads, and prints a serial banner; device logic is **stubbed** and
-gets filled in phase by phase. See the plan for the roadmap.
+**Phase 1 — inputs & feedback (code complete; awaiting first hardware test).**
+The sketch in [`firmware/`](./firmware) prints a serial banner, reads the three
+buttons (debounced) and the six address switches, and gives serial + LED
+feedback. IR and storage are still **stubbed** and get filled in phase by phase
+(see the plan). Next step is the **first on-device upload + test on an Arduino
+Nano** — see *Build & upload* below.
 
 ## Repo layout
 

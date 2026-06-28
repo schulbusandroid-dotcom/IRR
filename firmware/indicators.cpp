@@ -12,6 +12,12 @@ void indicator_sending(bool on) {
   digitalWrite(PIN_LED_SENDING, on ? HIGH : LOW);
 }
 
+void indicator_pulse_sending(uint16_t ms) {
+  digitalWrite(PIN_LED_SENDING, HIGH);
+  delay(ms);
+  digitalWrite(PIN_LED_SENDING, LOW);
+}
+
 void indicator_error(ErrorCode code) {
   // Basic version: blink the error LED `code` times. Phase 6 turns these
   // into clearly distinguishable patterns (one per ErrorCode).

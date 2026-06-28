@@ -11,9 +11,10 @@ void serialcmd_begin() {
 }
 
 void serialcmd_print_help() {
-  Serial.println(F("Commands (Phase 0: most are placeholders):"));
+  Serial.println(F("Commands ([Phase N] = not wired up yet):"));
   Serial.println(F("  help          - this list"));
   Serial.println(F("  switches      - show current address from the 6 switches"));
+  Serial.println(F("  (buttons)     - press READ/STORE/SEND; events print here"));
   Serial.println(F("  read          - [Phase 2] learn an IR signal"));
   Serial.println(F("  store <addr>  - [Phase 3] save last signal to a slot"));
   Serial.println(F("  send <addr>   - [Phase 4] transmit a stored slot"));
@@ -35,11 +36,11 @@ static void handle_line(char *line) {
     Serial.print(F("address = "));
     Serial.println(inputs_read_address());
   } else {
-    // TODO (Phase 1+): parse read/store/send/dump/etc. and call the
+    // TODO (Phase 2+): parse read/store/send/dump/etc. and call the
     // matching module functions. For now, acknowledge politely.
-    Serial.print(F("Not implemented yet in Phase 0: "));
+    Serial.print(F("Not wired up yet: "));
     Serial.println(line);
-    Serial.println(F("Type 'help' for the planned command list."));
+    Serial.println(F("Type 'help' for the command list and phase tags."));
   }
 }
 

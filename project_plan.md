@@ -299,12 +299,20 @@ so the device does something real as early as Phase 4.
 ### Phase 1 — Inputs & feedback foundation
 **Goal:** The box can *sense* you and *signal back*, before any IR.
 
-- [ ] Debounced read of the 3 buttons (READ/STORE/SEND).
-- [ ] Read the 6 switches → an address `0..63`. Print it.
-- [ ] `indicators`: helper to pulse the **sending LED** (D13) and flash the
-      **error LED** (A0) in a recognizable pattern.
-- [ ] `serialcmd` stub: typing `help` lists commands; `switches` prints the
+- [x] Debounced read of the 3 buttons (READ/STORE/SEND). *(millis() debounce +
+      falling-edge in `inputs_poll()`; one press = one event, no repeat.)*
+- [x] Read the 6 switches → an address `0..63`. Print it. *(`inputs_poll_address()`
+      prints on a debounced change; `switches` command prints on demand.)*
+- [x] `indicators`: helper to pulse the **sending LED** (D13) and flash the
+      **error LED** (A0) in a recognizable pattern. *(`indicator_pulse_sending()`
+      + `indicator_error()`.)*
+- [x] `serialcmd` stub: typing `help` lists commands; `switches` prints the
       current address; `sw`/button events print to serial.
+
+> **Code complete; awaiting the human's first on-hardware check (Arduino Nano).**
+> STORE/SEND already take the real "nothing learned yet" / "slot empty" error
+> paths (flashing the error LED), so both LEDs are exercised in Phase 1; the IR
+> capture/store/send behind them arrives in Phases 2–4.
 
 **How to test:** Open Serial Monitor. Press each button → see its name. Flip
 DIP switches → see the address number change (e.g. `101010` → `42`).

@@ -17,6 +17,10 @@ void indicators_begin();
 // Turn the "sending" LED on/off.
 void indicator_sending(bool on);
 
+// Briefly pulse the "sending" LED (D13) as quick "got it" feedback, e.g.
+// to acknowledge a button press. Blocking, ~ms long.
+void indicator_pulse_sending(uint16_t ms);
+
 // Flash the error LED to report `code` (blocking, brief).
 void indicator_error(ErrorCode code);
 
