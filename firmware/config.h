@@ -13,7 +13,7 @@
 
 // ---- Firmware identity ----------------------------------------------
 #define FIRMWARE_NAME     "IRR"
-#define FIRMWARE_VERSION  "0.4.0-phase3"
+#define FIRMWARE_VERSION  "0.5.0-phase4"
 
 // ---- Serial ----------------------------------------------------------
 #define SERIAL_BAUD       115200UL

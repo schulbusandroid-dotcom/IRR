@@ -6,8 +6,9 @@
 //  the implementation and must be included EXACTLY ONCE in the whole
 //  project — this is that one place. See project_plan.md §3.6.
 //
-//  Phase 2 implements the DECODED receive path. RAW capture + overflow
-//  storage is Phase 5; ir_send() is Phase 4.
+//  Phase 2 implements the DECODED receive path; Phase 4 implements the
+//  DECODED send path (ir_send). RAW capture, raw replay + overflow
+//  storage arrive in Phase 5.
 // =====================================================================
 
 #include "config.h"          // must define RAW_BUFFER_LENGTH first
@@ -18,7 +19,9 @@ void ir_begin() {
   // LED feedback would blink the built-in LED (D13) on every receive, but
   // D13 is our "sending" indicator — keep its meaning ours, so disable it.
   IrReceiver.begin(PIN_IR_RECEIVE, DISABLE_LED_FEEDBACK);
-  IrSender.begin(PIN_IR_SEND);   // readies the send pin for Phase 4; harmless now
+  // In v4.7.1 begin(sendPin) just records the pin; it does NOT touch the
+  // built-in LED, so our D13 "sending" indicator stays ours to control.
+  IrSender.begin(PIN_IR_SEND);
 }
 
 void ir_print_signal(const LearnedSignal *sig) {
@@ -92,9 +95,42 @@ IrReadResult ir_receive(LearnedSignal *out) {
 }
 
 bool ir_send(const LearnedSignal *sig) {
-  (void)sig;
-  // TODO (Phase 4 decoded, Phase 5 raw):
-  //   DECODED -> rebuild IRData, IrSender.write(&data);
-  //   RAW     -> IrSender.sendRaw(sig->raw, sig->rawLen, IR_SEND_KHZ);
-  return false;
+  if (sig->type == SIGNAL_DECODED) {
+    // Rebuild a send frame from the stored decoded fields and let the library
+    // choose the right protocol encoder. write() reads protocol/address/command
+    // (plus numberOfBits for Sony's 12/15/20-bit variants) and returns 0 for a
+    // protocol it cannot transmit. Zero-init so every unused field (and flags)
+    // starts clean.
+    IRData d = {};
+    d.protocol     = (decode_type_t)sig->protocol;
+    d.address      = sig->address;
+    d.command      = sig->command;
+    d.numberOfBits = sig->numberOfBits;
+    d.flags        = IRDATA_FLAGS_EMPTY;   // a fresh frame, not a repeat
+
+    bool ok = (IrSender.write(&d) != 0);
+
+    // The library's blessed "keep receiving cleanly after a send" call. With
+    // v4's software-PWM send it is effectively a NOP, but it is harmless and
+    // keeps the next READ working if the send path ever needs the timer.
+    IrReceiver.restartAfterSend();
+
+    if (ok) {
+      Serial.println(F("IR: sent"));
+      ir_print_signal(sig);                // reuse the shared formatter
+    } else {
+      Serial.print(F("IR: cannot transmit protocol "));
+      Serial.println(getProtocolString((decode_type_t)sig->protocol));
+    }
+    return ok;
+  }
+
+  if (sig->type == SIGNAL_RAW) {
+    // Raw replay via IrSender.sendRaw(sig->raw, sig->rawLen, IR_SEND_KHZ)
+    // arrives in Phase 5, alongside raw capture and raw EEPROM payloads.
+    Serial.println(F("IR: raw send arrives in Phase 5"));
+    return false;
+  }
+
+  return false;   // SIGNAL_EMPTY — nothing to send
 }

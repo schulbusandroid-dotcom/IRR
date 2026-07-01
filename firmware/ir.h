@@ -26,8 +26,9 @@ IrReadResult ir_receive(LearnedSignal *out);
 // the READ path and the serial `show` command so output stays consistent.
 void ir_print_signal(const LearnedSignal *sig);
 
-// SEND: transmit a previously learned signal (decoded or raw).
-// Returns true on success.   [Phase 4 decoded, Phase 5 raw]
+// SEND: transmit a previously learned signal out of the IR LED (D3).
+// Decoded signals are re-encoded via the library (Phase 4); raw replay is
+// Phase 5. Returns true if a frame was actually transmitted.
 bool ir_send(const LearnedSignal *sig);
 
 #endif // IR_H

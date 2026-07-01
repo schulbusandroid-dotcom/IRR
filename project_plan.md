@@ -385,10 +385,28 @@ like `NEC addr=0x00 cmd=0x45`. Different buttons → different commands.
 ### Phase 4 — IR send (decoded) — *first end-to-end!*
 **Goal:** SEND replays a stored decoded signal and actually controls a device.
 
-- [ ] **SEND**: `addr = switches`; load slot; if used, transmit decoded signal
-      via IR LED on D3; pulse the sending LED.
-- [ ] Error feedback if the slot is empty.
-- [ ] Serial: `send <addr>`.
+- [x] **SEND**: `addr = switches`; load slot; if used, transmit decoded signal
+      via IR LED on D3; pulse the sending LED. *(`handle_send()` loads the slot,
+      lights D13 for the transmission, and calls `ir_send()`.)*
+- [x] Error feedback if the slot is empty. *(empty slot → `ERR_EMPTY_SLOT`; a
+      transmit failure — raw slot or a protocol `write()` can't encode →
+      `ERR_NO_SIGNAL`.)*
+- [x] Serial: `send <addr>`. *(`cmd_send()` in `serialcmd.cpp`.)*
+
+`ir_send()` rebuilds an `IRData` from the stored decoded fields (protocol /
+address / command / numberOfBits, flags reset to `IRDATA_FLAGS_EMPTY`), calls
+`IrSender.write(&data)` (returns 0 for a protocol it can't encode), then
+`IrReceiver.restartAfterSend()` so the next READ stays clean. Raw replay is
+still Phase 5.
+
+> **Code complete; awaiting the human's on-hardware end-to-end check.** Needs the
+> **IR-LED transmitter wired** (transistor + IR LED on D3). Verified off-device:
+> the whole sketch compiles + links clean (`-Wall -Wextra`) against the mock
+> `Arduino.h`/`EEPROM.h`/`IRremote.hpp`, and a send unit test passes **32/32**
+> (decoded fields forwarded, flags reset, `restartAfterSend()` called,
+> unsupported-protocol / raw / empty all refused without a bogus transmit,
+> a storage→send round-trip, and the serial `send <addr>` dispatch for
+> used / empty / out-of-range slots).
 
 **How to test:** Learn your TV's "mute" (Phase 2/3), store at addr 1, point the
 box's IR LED at the TV, set switches to 1, press SEND → TV mutes. 🎉
