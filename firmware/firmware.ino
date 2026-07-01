@@ -88,7 +88,7 @@ static void print_banner() {
 static void handle_read() {
   switch (ir_receive(&last_received_data)) {
     case IR_READ_DECODED:
-    case IR_READ_RAW:              // (raw arrives in Phase 5)
+    case IR_READ_RAW:              // decoded or raw fallback both count as learned
       indicator_pulse_sending(60); // success blink on D13
       break;
     case IR_READ_OVERFLOW:

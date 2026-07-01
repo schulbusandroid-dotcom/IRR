@@ -3,7 +3,7 @@
 #include <EEPROM.h>
 
 // =====================================================================
-//  Phase 3: onboard-EEPROM backend for DECODED signals.
+//  Phase 3/5: onboard-EEPROM backend for DECODED and RAW signals.
 //
 //  On-EEPROM layout (see project_plan §3.4 and config.h):
 //    [0]        MAGIC     — detects first run / a different format
@@ -17,17 +17,26 @@
 //  A DECODED payload is EEPROM_DECODED_BYTES (7) bytes:
 //    [0] protocol  [1..2] address(LE)  [3..4] command(LE)
 //    [5] numberOfBits  [6] flags
+//  A RAW payload is exactly `rawLen` bytes — one 50 us tick each (see
+//  signal.h). The directory length field carries the count, so raw needs no
+//  in-heap header. Raw uses far more room than decoded (a TV frame ~30-70
+//  ticks; a "fancy" remote more), so only a few raw slots fit the 766-byte
+//  heap before storage_write() returns false ("memory full").
 //
-//  Allocation strategy (kept simple + forward-compatible with Phase 5 raw):
+//  Allocation strategy:
 //    * Re-storing a slot with a SAME-length payload overwrites in place, so
 //      re-recording a decoded signal (always 7 bytes) never grows the heap.
 //    * Otherwise the payload is appended at the heap high-water mark. The
 //      high-water mark is recomputed from the directory (no extra persistent
 //      state to keep in sync), so clearing the top allocation reclaims it.
 //    * A used slot re-stored at a DIFFERENT length orphans its old bytes until
-//      the next format(). For decoded-only Phase 3 this never happens (fixed
-//      7-byte payload); it becomes the documented fragmentation trade-off when
-//      variable-length raw payloads arrive (project_plan §3.4 / Phase 5).
+//      the next format(). Fixed 7-byte decoded records never trigger this;
+//      variable-length raw records can, which is the documented fragmentation
+//      trade-off (project_plan §3.4 / §7). Heap compaction stays a future item.
+//
+//  Raw was added without bumping VERSION: it only sets the existing RAW flag
+//  and uses the existing length field, so EEPROMs written by Phase 3/4
+//  (decoded only) remain valid and keep their stored signals.
 //
 //  All byte writes go through EEPROM.update(), which skips unchanged bytes to
 //  protect the ~100k-write endurance (project_plan §6).
@@ -127,12 +136,29 @@ void storage_format() {
 }
 
 bool storage_write(uint8_t addr, const LearnedSignal *sig) {
-  if (addr >= NUM_SLOTS)             return false;
-  if (sig->type != SIGNAL_DECODED)   return false;   // raw arrives in Phase 5
+  if (addr >= NUM_SLOTS) return false;
 
-  uint8_t payload[EEPROM_DECODED_BYTES];
-  decoded_to_bytes(sig, payload);
-  const uint8_t len = EEPROM_DECODED_BYTES;
+  // Serialize into a common (payload, len, flags) shape. DECODED is a fixed
+  // 7-byte record; RAW is exactly rawLen tick bytes straight from sig->raw
+  // (the directory length field records the count — no separate length byte).
+  uint8_t        decoded_buf[EEPROM_DECODED_BYTES];
+  const uint8_t *payload;
+  uint8_t        len;
+  uint8_t        type_flag;
+
+  if (sig->type == SIGNAL_DECODED) {
+    decoded_to_bytes(sig, decoded_buf);
+    payload   = decoded_buf;
+    len       = EEPROM_DECODED_BYTES;
+    type_flag = 0;
+  } else if (sig->type == SIGNAL_RAW) {
+    if (sig->rawLen == 0) return false;     // nothing captured
+    payload   = sig->raw;
+    len       = sig->rawLen;                // 1 tick byte per entry
+    type_flag = EEPROM_DIR_FLAG_RAW;
+  } else {
+    return false;                           // SIGNAL_EMPTY
+  }
 
   DirEntry e;
   dir_read(addr, &e);
@@ -151,7 +177,7 @@ bool storage_write(uint8_t addr, const LearnedSignal *sig) {
     EEPROM.update(offset + i, payload[i]);
   }
 
-  e.flags  = EEPROM_DIR_FLAG_USED;     // decoded: RAW flag stays clear
+  e.flags  = EEPROM_DIR_FLAG_USED | type_flag;
   e.length = len;
   e.offset = offset;
   dir_write(addr, &e);
@@ -164,8 +190,21 @@ bool storage_read(uint8_t addr, LearnedSignal *out) {
   DirEntry e;
   dir_read(addr, &e);
   if (!(e.flags & EEPROM_DIR_FLAG_USED)) return false;
-  if (e.flags & EEPROM_DIR_FLAG_RAW)     return false;   // raw: Phase 5
-  if (e.length != EEPROM_DECODED_BYTES)  return false;   // unexpected size
+
+  if (e.flags & EEPROM_DIR_FLAG_RAW) {
+    // Raw payload = e.length tick bytes. Guard against a corrupt length that
+    // would overrun the fixed raw[] buffer.
+    if (e.length == 0 || e.length > RAW_MAX_TIMINGS) return false;
+    signal_clear(out);
+    out->type   = SIGNAL_RAW;
+    out->rawLen = e.length;
+    for (uint8_t i = 0; i < e.length; i++) {
+      out->raw[i] = EEPROM.read(e.offset + i);
+    }
+    return true;
+  }
+
+  if (e.length != EEPROM_DECODED_BYTES) return false;    // unexpected size
 
   uint8_t payload[EEPROM_DECODED_BYTES];
   for (uint8_t i = 0; i < EEPROM_DECODED_BYTES; i++) {

@@ -6,9 +6,9 @@
 //  the implementation and must be included EXACTLY ONCE in the whole
 //  project — this is that one place. See project_plan.md §3.6.
 //
-//  Phase 2 implements the DECODED receive path; Phase 4 implements the
-//  DECODED send path (ir_send). RAW capture, raw replay + overflow
-//  storage arrive in Phase 5.
+//  Phase 2 implements the DECODED receive path; Phase 4 the DECODED send
+//  path; Phase 5 adds the RAW fallback for remotes we can't decode —
+//  captured/replayed as 50 us "ticks" (see signal.h) so they fit the chip.
 // =====================================================================
 
 #include "config.h"          // must define RAW_BUFFER_LENGTH first
@@ -40,6 +40,38 @@ void ir_print_signal(const LearnedSignal *sig) {
   }
 }
 
+// Copy the just-decoded frame's raw timings into *out as a RAW signal. Must be
+// called while the frame is still current (before IrReceiver.resume()). The
+// library helper compensates mark/space skew (MARK_EXCESS_MICROS), converts to
+// 50 us ticks, clips to 255, skips the leading gap, and writes rawlen-1 entries.
+static IrReadResult capture_raw(LearnedSignal *out) {
+  // rawlen counts recorded durations including the leading gap at index 0.
+  uint16_t entries = IrReceiver.decodedIRData.rawlen;
+  if (entries < 2) {
+    // A lone gap with no mark/space pair — nothing usable to replay.
+    Serial.println(F("IR: unknown frame, no usable timings - not stored"));
+    return IR_READ_UNDECODED;
+  }
+  entries -= 1;                       // drop the leading gap -> sendable timings
+
+  // Safety net: without an overflow flag this can't exceed the buffer, but
+  // never let the library write past out->raw.
+  if (entries > RAW_MAX_TIMINGS) {
+    Serial.println(F("IR: raw frame too long - not stored"));
+    return IR_READ_OVERFLOW;
+  }
+
+  signal_clear(out);
+  out->type   = SIGNAL_RAW;
+  out->rawLen = (uint8_t)entries;
+  IrReceiver.compensateAndStoreIRResultInArray(out->raw);   // fills `entries` ticks
+
+  Serial.print(F("IR: learned raw ("));
+  Serial.print(out->rawLen);
+  Serial.println(F(" timings)"));
+  return IR_READ_RAW;
+}
+
 IrReadResult ir_receive(LearnedSignal *out) {
   Serial.println(F("Listening for IR (aim a remote and press a button)..."));
 
@@ -68,12 +100,14 @@ IrReadResult ir_receive(LearnedSignal *out) {
       return IR_READ_OVERFLOW;
     }
 
-    // Not a known protocol. Raw capture/replay arrives in Phase 5; for now
-    // we report it and store nothing.
+    // Not a known protocol — the "fancy remote" case. Capture the raw timings
+    // so we can still replay it. capture_raw() reads the frame, so do it before
+    // resume() releases the buffer.
     if (d.protocol == UNKNOWN) {
+      IrReadResult r = capture_raw(out);
       IrReceiver.resume();
-      Serial.println(F("IR: received, but protocol UNKNOWN (raw support: Phase 5)"));
-      return IR_READ_UNDECODED;
+      if (r == IR_READ_RAW) ir_print_signal(out);
+      return r;
     }
 
     // Good decode — fill the signal (only touch *out on success).
@@ -126,10 +160,14 @@ bool ir_send(const LearnedSignal *sig) {
   }
 
   if (sig->type == SIGNAL_RAW) {
-    // Raw replay via IrSender.sendRaw(sig->raw, sig->rawLen, IR_SEND_KHZ)
-    // arrives in Phase 5, alongside raw capture and raw EEPROM payloads.
-    Serial.println(F("IR: raw send arrives in Phase 5"));
-    return false;
+    if (sig->rawLen == 0) return false;   // nothing captured
+    // raw[] holds 50 us ticks; the uint8_t sendRaw overload multiplies each by
+    // MICROS_PER_TICK for us and generates the 38 kHz carrier in software.
+    IrSender.sendRaw(sig->raw, sig->rawLen, IR_SEND_KHZ);
+    IrReceiver.restartAfterSend();
+    Serial.println(F("IR: sent"));
+    ir_print_signal(sig);
+    return true;
   }
 
   return false;   // SIGNAL_EMPTY — nothing to send

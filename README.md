@@ -8,18 +8,21 @@ remembers up to 64 signals.
 
 ## Status
 
-**Phase 4 — IR send (decoded): code complete; awaiting the human's on-hardware
-end-to-end test.** Phases 1 (inputs & feedback), 2 (decoded IR receive) and 3
-(decoded EEPROM storage) are **confirmed working on hardware** — stored signals
-land in the right slots and survive a power cycle. The sketch in
-[`firmware/`](./firmware) prints a serial banner, reads the buttons and address
-switches, **learns a decoded IR signal on READ** (IRremote v4.7.1 on D2),
-**persists it on STORE**, and now **transmits a stored decoded signal on SEND**
-out of the IR LED on D3 — with a `send <addr>` serial command alongside
-`store`/`show <addr>`/`dump`/`clear`/`format`/`mem`. Raw-signal capture/replay
-(the "fancy" remotes that overflow on READ) is still **Phase 5**. Next step is
-the **learn → store → send end-to-end test on the Nano**, which needs the
-**IR-LED transmitter wired** (transistor + IR LED on D3) — see *Build & upload*.
+**Phase 5 — Raw fallback (fancy remotes): code complete; awaiting the human's
+on-hardware test.** Phases 1 (inputs & feedback), 2 (decoded IR receive) and 3
+(decoded EEPROM storage) are **confirmed working on hardware**; Phase 4 (decoded
+IR send) is code-complete. The sketch in [`firmware/`](./firmware) reads the
+buttons and address switches, **learns an IR signal on READ** — decoded for known
+protocols, or **raw timings for remotes it can't decode** (the "fancy" ones) —
+**persists it on STORE**, and **transmits it on SEND** out of the IR LED on D3,
+decoded via the library or raw via `sendRaw`. Raw is stored compactly as 50 µs
+"ticks" (1 byte each); the 1 KB EEPROM holds all 64 decoded signals but only a
+handful of raw ones before STORE reports "memory full". Over-long frames are
+refused rather than saved truncated. Serial commands: `read`/`store <addr>`/
+`send <addr>`/`show [<addr>]`/`dump`/`clear <addr>`/`format`/`mem`. Next step is
+the **raw round-trip test on the Nano** with the previously-overflowing remote,
+which needs the **IR-LED transmitter wired** (transistor + IR LED on D3) — see
+*Build & upload*.
 
 ## Repo layout
 
@@ -31,8 +34,8 @@ firmware/             Arduino sketch — open firmware/firmware.ino in the IDE
   firmware.ino        setup()/loop() + button state machine + banner
   signal.h            LearnedSignal data model (one IR signal in RAM)
   inputs.*            buttons + switches -> address (0..63)
-  ir.*                IR receive / send (IRremote)         [receive+decoded send done; raw -> Phase 5]
-  storage.*           storage interface + EEPROM backend   [decoded done; raw -> Phase 5]
+  ir.*                IR receive / send (IRremote)         [decoded + raw done]
+  storage.*           storage interface + EEPROM backend   [decoded + raw done]
   indicators.*        sending / error LEDs
   serialcmd.*         serial test/debug interface
 ```

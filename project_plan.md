@@ -198,13 +198,13 @@ Today this is implemented on the **onboard 1 KB EEPROM**. Later, swapping in an
 external chip (Phase 7) means writing a *new backend* behind the *same*
 functions — nothing else in the project changes.
 
-#### Onboard EEPROM format v1 — decoded finalized (Phase 3); raw extends it (Phase 5)
+#### Onboard EEPROM format v1 — decoded (Phase 3) + raw (Phase 5), both finalized
 
 The hard truth: **1 KB cannot hold 64 *raw* signals** (a single TV frame is
-~70 timing values ≈ 140 bytes; "fancy" remotes are bigger still). So the layout
-is a small **directory** plus a shared **data heap**, which lets *all 64 slots*
-hold tiny decoded signals, and lets *a few* slots hold raw signals until the
-heap fills up — at which point STORE reports "memory full" on the error LED and
+~30–70 timing values; "fancy" remotes are bigger still). So the layout is a
+small **directory** plus a shared **data heap**, which lets *all 64 slots* hold
+tiny decoded signals, and lets *a few* slots hold raw signals until the heap
+fills up — at which point STORE reports "memory full" on the error LED and
 serial.
 
 ```
@@ -220,13 +220,26 @@ serial.
 - **Decoded payload = exactly 7 bytes** (implemented Phase 3):
   `protocol(1) address(2,LE) command(2,LE) numberOfBits(1) flags(1)` → all 64
   slots fit easily (64×7 = 448 B, heap is 766 B).
-- **Raw payload** = `rawLen` + timing values (2 bytes each) → a few fit (Phase 5).
+- **Raw payload = exactly `rawLen` bytes** (implemented Phase 5): one byte per
+  mark/space, each a **50 µs "tick"** (`MICROS_PER_TICK`). We store *ticks*, not
+  microseconds, because (a) it's the receiver's native resolution — no precision
+  lost — and (b) it **halves** the RAM/EEPROM footprint vs. 2-byte microseconds,
+  which matters on a 2 KB/1 KB chip. The directory's `length` field *is* the tick
+  count, so no separate length byte lives in the heap. Capture uses IRremote's
+  `compensateAndStoreIRResultInArray()` (mark/space compensation + tick conv +
+  clip to 255, leading gap dropped); replay uses the `uint8_t` `sendRaw()`
+  overload at 38 kHz. A raw frame therefore costs `rawLen` bytes (~30–70 for a
+  TV button), so only a handful fit the 766-byte heap before "memory full".
+- Raw was added **without a VERSION bump** — it reuses the existing RAW flag and
+  length field — so EEPROMs written by Phase 3/4 (decoded only) stay valid and
+  keep their signals after upgrading to Phase 5.
 - **Overwrite policy (v1, implemented):** re-storing a slot whose new payload is
   the **same length** overwrites *in place* (no heap growth) — so re-recording a
-  decoded signal never fragments or grows the heap. A re-store at a *different*
-  length appends at the high-water mark and orphans the old bytes until the next
-  `format()`. For decoded-only Phase 3 this never happens (fixed 7 bytes);
-  compaction remains a documented future improvement for variable-length raw.
+  decoded signal (fixed 7 bytes), or a raw signal of the same length, never
+  fragments or grows the heap. A re-store at a *different* length (only possible
+  for raw) appends at the high-water mark and **orphans the old bytes** until the
+  next `format()`. Heap compaction remains the documented future improvement for
+  variable-length raw (§7).
 - `storage_free_bytes()` = EEPROM size − heap high-water mark, reported over
   serial (`mem`, and after every `store`) so you always know capacity. The
   high-water mark is recomputed from the directory, so clearing the top
@@ -417,20 +430,46 @@ box's IR LED at the TV, set switches to 1, press SEND → TV mutes. 🎉
 ### Phase 5 — Raw fallback (the fancy-remote handling)
 **Goal:** Remotes that *don't* decode are still learned and replayed.
 
-- [ ] On READ, if protocol is UNKNOWN, capture **raw timings** into
-      `last_received_data` as RAW; set a generous `RAW_BUFFER_LENGTH`.
-- [ ] **Overflow handling:** detect too-long frames; **refuse to store**;
-      clear error signal (no truncated saves).
-- [ ] Extend the EEPROM backend to store/read variable-length raw payloads in
-      the heap; **"memory full"** detection + error.
-- [ ] **SEND** replays raw via `IrSender.sendRaw(...)` (38 kHz carrier).
-- [ ] Decide & document the **overwrite/fragmentation** policy.
+- [x] On READ, if protocol is UNKNOWN, capture **raw timings** into
+      `last_received_data` as RAW. *(`capture_raw()` in `ir.cpp` stores
+      `rawlen-1` 50 µs ticks via `compensateAndStoreIRResultInArray()`;
+      `RAW_BUFFER_LENGTH` stays 200.)*
+- [x] **Overflow handling:** detect too-long frames; **refuse to store**;
+      clear error signal (no truncated saves). *(the `IRDATA_FLAGS_WAS_OVERFLOW`
+      check is unchanged; a defensive `rawlen-1 > RAW_MAX_TIMINGS` guard also
+      refuses. Both leave `*out` untouched → `ERR_OVERFLOW`.)*
+- [x] Extend the EEPROM backend to store/read variable-length raw payloads in
+      the heap; **"memory full"** detection + error. *(`storage_write`/`_read`
+      handle `SIGNAL_RAW`: payload = `rawLen` tick bytes, RAW flag set, refuse
+      when the heap can't fit → `ERR_MEM_FULL`.)*
+- [x] **SEND** replays raw via `IrSender.sendRaw(...)` (38 kHz carrier).
+      *(`ir_send()` calls the `uint8_t` `sendRaw` overload, then
+      `restartAfterSend()`.)*
+- [x] Decide & document the **overwrite/fragmentation** policy. *(§3.4:
+      same-length re-store in place; different-length raw re-store orphans old
+      bytes until `format()`; compaction is a future item, §7.)*
+
+> **Code complete; awaiting the human's on-hardware check with the "fancy"
+> remote** (same wiring as Phase 4; needs the IR-LED transmitter on D3). Verified
+> off-device: whole sketch compiles + links clean (`-Wall -Wextra`) against the
+> mock `Arduino.h`/`EEPROM.h`/`IRremote.hpp`; a raw unit test passes **39/39**
+> (raw capture on READ incl. gap-drop + overflow refusal, raw EEPROM
+> store/read/round-trip, decoded+raw coexistence, same-/different-length raw
+> overwrite, memory-full refusal, raw `sendRaw` replay at 38 kHz, and a full
+> serial `read → store → dump → send` fancy-remote round-trip), and the Phase 4
+> send suite still passes **33/33**.
 
 **How to test:** Use a remote that printed `UNKNOWN` in Phase 2 (or an unusual
 one). READ → `show` says RAW with N timings → STORE → SEND controls the target.
 Try a very long frame and confirm it errors instead of corrupting.
 **Done when:** At least one non-decodable remote round-trips, and over-long
 frames fail loudly.
+
+> **Note on the specific "fancy" remote that overflowed:** if it still reports
+> overflow on READ, its frame is longer than `RAW_BUFFER_LENGTH` (200). That is
+> the honest "fail loudly" path — raising the buffer costs RAM and, for
+> AC-class remotes, exceeds the 1 KB EEPROM anyway, which is exactly the
+> **external-EEPROM (Phase 7)** case. Remotes that fit now round-trip fully.
 
 ---
 
@@ -550,14 +589,17 @@ catch errors before you upload — but this is optional and never required.
 
 ## 7. Open questions / decisions deferred (revisit when relevant)
 
-- Exact EEPROM byte format: **decoded finalized in Phase 3** (7-byte payload,
-  see §3.4); raw layout finalized in **Phase 5** once real sizes are measured.
-- Overwrite/fragmentation policy: **v1 implemented (Phase 3)** — same-length
-  re-store overwrites in place; a different-length re-store orphans old bytes
-  until `format()`. Heap compaction stays a documented future improvement,
-  revisited in **Phase 5/6** when variable-length raw payloads make it matter.
+- Exact EEPROM byte format: **decoded finalized in Phase 3** (7-byte payload)
+  and **raw finalized in Phase 5** (`rawLen` bytes, one 50 µs tick each; the
+  directory length carries the count) — see §3.4. Both live under format v1.
+- Overwrite/fragmentation policy: **implemented (Phase 3, extended Phase 5)** —
+  same-length re-store overwrites in place; a different-length re-store (only
+  raw can differ in length) orphans old bytes until `format()`. **Heap
+  compaction is still open** — a documented future improvement, worth revisiting
+  in **Phase 6/7** if raw re-recording churn makes fragmentation bite.
 - Whether to add the external EEPROM (**Phase 7**) — depends on whether you hit
-  the onboard limit in practice with the remotes you care about.
+  the onboard limit in practice with the remotes you care about (a single big
+  "fancy"/AC remote can exhaust the 766-byte heap on its own).
 - Error-LED blink patterns — finalized in **Phase 6**.
 
 ---
