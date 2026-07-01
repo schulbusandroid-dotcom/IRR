@@ -8,12 +8,14 @@ remembers up to 64 signals.
 
 ## Status
 
-**Phase 1 — inputs & feedback (code complete; awaiting first hardware test).**
-The sketch in [`firmware/`](./firmware) prints a serial banner, reads the three
-buttons (debounced) and the six address switches, and gives serial + LED
-feedback. IR and storage are still **stubbed** and get filled in phase by phase
-(see the plan). Next step is the **first on-device upload + test on an Arduino
-Nano** — see *Build & upload* below.
+**Phase 2 — IR receive (code complete; awaiting hardware test).** Phase 1
+(inputs & feedback) is **confirmed working on hardware**. The sketch in
+[`firmware/`](./firmware) prints a serial banner, reads the buttons and address
+switches, and now **learns a decoded IR signal on READ** (IRremote v4.7.1 on
+D2) — reported over serial and via the `read`/`show` commands. Storage and IR
+send are still **stubbed** and get filled in phase by phase (see the plan).
+Next step is the **on-device IR test on an Arduino Nano** with a TSOP receiver
+on D2 — see *Build & upload* below.
 
 ## Repo layout
 

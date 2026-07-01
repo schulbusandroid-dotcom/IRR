@@ -1,6 +1,12 @@
 #include "serialcmd.h"
 #include "config.h"
 #include "inputs.h"
+#include "signal.h"
+#include "ir.h"
+
+// The one "current" signal in RAM, defined in firmware.ino. The serial
+// `read`/`show` commands drive/inspect it, mirroring the READ button.
+extern LearnedSignal last_received_data;
 
 // Simple line buffer for the serial command parser.
 static char    s_line[40];
@@ -15,10 +21,10 @@ void serialcmd_print_help() {
   Serial.println(F("  help          - this list"));
   Serial.println(F("  switches      - show current address from the 6 switches"));
   Serial.println(F("  (buttons)     - press READ/STORE/SEND; events print here"));
-  Serial.println(F("  read          - [Phase 2] learn an IR signal"));
+  Serial.println(F("  read          - learn an IR signal (listens ~5s)"));
   Serial.println(F("  store <addr>  - [Phase 3] save last signal to a slot"));
   Serial.println(F("  send <addr>   - [Phase 4] transmit a stored slot"));
-  Serial.println(F("  show [<addr>] - [Phase 2/3] show last/stored signal"));
+  Serial.println(F("  show          - show last learned signal (slots: Phase 3)"));
   Serial.println(F("  dump          - [Phase 3] list all slots"));
   Serial.println(F("  clear <addr>  - [Phase 3] free a slot"));
   Serial.println(F("  format        - [Phase 3] wipe all storage"));
@@ -35,9 +41,16 @@ static void handle_line(char *line) {
   } else if (strcmp(line, "switches") == 0) {
     Serial.print(F("address = "));
     Serial.println(inputs_read_address());
+  } else if (strcmp(line, "read") == 0) {
+    ir_receive(&last_received_data);        // prints its own outcome
+  } else if (strcmp(line, "show") == 0) {
+    Serial.println(F("last_received_data:"));
+    ir_print_signal(&last_received_data);
+  } else if (strncmp(line, "show ", 5) == 0) {
+    Serial.println(F("show <addr> (stored slots) lands in Phase 3"));
   } else {
-    // TODO (Phase 2+): parse read/store/send/dump/etc. and call the
-    // matching module functions. For now, acknowledge politely.
+    // TODO (Phase 3+): parse store/send/dump/etc. and call the matching
+    // module functions. For now, acknowledge politely.
     Serial.print(F("Not wired up yet: "));
     Serial.println(line);
     Serial.println(F("Type 'help' for the command list and phase tags."));

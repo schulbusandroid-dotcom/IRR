@@ -323,11 +323,22 @@ DIP switches → see the address number change (e.g. `101010` → `42`).
 ### Phase 2 — IR receive (decoded)
 **Goal:** READ learns a recognizable remote into `last_received_data` (RAM only).
 
-- [ ] Integrate IRremote receive on D2.
-- [ ] On **READ**: capture one frame; if decoded, fill `last_received_data` as
-      DECODED and print `protocol / address / command / bits`.
-- [ ] Handle "no signal" / "noise" cleanly (error feedback, nothing stored).
-- [ ] Serial: `read` command simulates a READ; `show` prints `last_received_data`.
+- [x] Integrate IRremote receive on D2. *(`ir_begin()`; `<IRremote.hpp>` included
+      exactly once in `ir.cpp`, after `config.h` sets `RAW_BUFFER_LENGTH`.)*
+- [x] On **READ**: capture one frame; if decoded, fill `last_received_data` as
+      DECODED and print `protocol / address / command / bits`. *(`ir_receive()`
+      listens up to `IR_LISTEN_TIMEOUT_MS`, skips repeat frames, only writes
+      `*out` on success.)*
+- [x] Handle "no signal" / "noise" cleanly (error feedback, nothing stored).
+      *(timeout → `IR_READ_NONE`; UNKNOWN → `IR_READ_UNDECODED`; overflow →
+      `IR_READ_OVERFLOW`; each flashes the error LED and stores nothing.)*
+- [x] Serial: `read` command simulates a READ; `show` prints `last_received_data`.
+
+> **Code complete; awaiting the human's on-hardware check (Arduino Nano + TSOP
+> IR receiver on D2).** Requires the **IRremote v4.7.1** library installed.
+> Verified off-device: full sketch compiles + links against a mock IRremote,
+> and a scriptable `ir_receive()` test passes 16/16 (decoded, repeat-skip,
+> overflow, unknown, timeout, stale-frame flush).
 
 **How to test:** Point a normal TV remote, press READ → serial shows something
 like `NEC addr=0x00 cmd=0x45`. Different buttons → different commands.
