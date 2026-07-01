@@ -8,16 +8,18 @@ remembers up to 64 signals.
 
 ## Status
 
-**Phase 3 — Storage (decoded EEPROM): code complete; awaiting the human's
-power-cycle test.** Phases 1 (inputs & feedback) and 2 (decoded IR receive) are
-**confirmed working on hardware**. The sketch in [`firmware/`](./firmware)
-prints a serial banner, reads the buttons and address switches, **learns a
-decoded IR signal on READ** (IRremote v4.7.1 on D2), and now **persists it to
-the onboard EEPROM on STORE** — with `store`/`show <addr>`/`dump`/`clear`/
-`format`/`mem` serial commands. Stored signals survive a power cycle. IR **send**
-is still **stubbed** (Phase 4), as is raw-signal capture (Phase 5). Next step is
-the **power-cycle persistence test on the Nano** — learn, store, unplug/replug,
-`dump` — see *Build & upload* below.
+**Phase 4 — IR send (decoded): code complete; awaiting the human's on-hardware
+end-to-end test.** Phases 1 (inputs & feedback), 2 (decoded IR receive) and 3
+(decoded EEPROM storage) are **confirmed working on hardware** — stored signals
+land in the right slots and survive a power cycle. The sketch in
+[`firmware/`](./firmware) prints a serial banner, reads the buttons and address
+switches, **learns a decoded IR signal on READ** (IRremote v4.7.1 on D2),
+**persists it on STORE**, and now **transmits a stored decoded signal on SEND**
+out of the IR LED on D3 — with a `send <addr>` serial command alongside
+`store`/`show <addr>`/`dump`/`clear`/`format`/`mem`. Raw-signal capture/replay
+(the "fancy" remotes that overflow on READ) is still **Phase 5**. Next step is
+the **learn → store → send end-to-end test on the Nano**, which needs the
+**IR-LED transmitter wired** (transistor + IR LED on D3) — see *Build & upload*.
 
 ## Repo layout
 
@@ -29,7 +31,7 @@ firmware/             Arduino sketch — open firmware/firmware.ino in the IDE
   firmware.ino        setup()/loop() + button state machine + banner
   signal.h            LearnedSignal data model (one IR signal in RAM)
   inputs.*            buttons + switches -> address (0..63)
-  ir.*                IR receive (done) / send (IRremote)  [receive done; send -> Phase 4/5]
+  ir.*                IR receive / send (IRremote)         [receive+decoded send done; raw -> Phase 5]
   storage.*           storage interface + EEPROM backend   [decoded done; raw -> Phase 5]
   indicators.*        sending / error LEDs
   serialcmd.*         serial test/debug interface

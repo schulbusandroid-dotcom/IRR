@@ -131,14 +131,23 @@ static void handle_store() {
 static void handle_send() {
   uint8_t addr = inputs_read_address();
   Serial.print(F("SEND  addr="));
-  Serial.print(addr);
+  Serial.println(addr);
 
   LearnedSignal s;
-  if (!storage_read(addr, &s)) {           // stub returns false -> empty slot
+  if (!storage_read(addr, &s)) {
     Serial.println(F("  -> slot empty"));
     indicator_error(ERR_EMPTY_SLOT);
     return;
   }
-  // Phase 4/5: indicator_sending(true); ir_send(&s); indicator_sending(false);
-  Serial.println(F("  -> (IR send lands in Phase 4)"));
+
+  // Light D13 for the whole transmission; ir_send() prints what it sent.
+  indicator_sending(true);
+  bool ok = ir_send(&s);
+  indicator_sending(false);
+
+  // A decoded common protocol always transmits; a failure here means a raw
+  // slot (Phase 5) or an exotic protocol the library's write() can't encode.
+  if (!ok) {
+    indicator_error(ERR_NO_SIGNAL);
+  }
 }

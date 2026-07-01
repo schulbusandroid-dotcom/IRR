@@ -6,7 +6,8 @@
 #include "storage.h"
 
 // The one "current" signal in RAM, defined in firmware.ino. The serial
-// `read`/`show`/`store` commands drive/inspect it, mirroring the buttons.
+// `read`/`show`/`store`/`send` commands drive/inspect it and the stored
+// slots, mirroring the buttons.
 extern LearnedSignal last_received_data;
 
 // Simple line buffer for the serial command parser.
@@ -24,7 +25,7 @@ void serialcmd_print_help() {
   Serial.println(F("  (buttons)     - press READ/STORE/SEND; events print here"));
   Serial.println(F("  read          - learn an IR signal (listens ~5s)"));
   Serial.println(F("  store <addr>  - save last learned signal to a slot 0..63"));
-  Serial.println(F("  send <addr>   - [Phase 4] transmit a stored slot"));
+  Serial.println(F("  send <addr>   - transmit the signal stored in a slot"));
   Serial.println(F("  show          - show last learned signal"));
   Serial.println(F("  show <addr>   - show the signal stored in a slot"));
   Serial.println(F("  dump          - list all used slots"));
@@ -66,6 +67,22 @@ static void cmd_store(uint8_t addr) {
     Serial.println(F(" free bytes)"));
   } else {
     Serial.println(F("store: FAILED (memory full)"));
+  }
+}
+
+static void cmd_send(uint8_t addr) {
+  LearnedSignal s;
+  if (!storage_read(addr, &s)) {
+    Serial.print(F("send: slot "));
+    Serial.print(addr);
+    Serial.println(F(" is empty"));
+    return;
+  }
+  // ir_send() prints what it transmitted (or why it couldn't). Like the other
+  // serial commands, this test path doesn't drive the indicator LEDs — that's
+  // the button handler's job in firmware.ino.
+  if (!ir_send(&s)) {
+    Serial.println(F("send: FAILED (raw replay is Phase 5, or protocol not transmittable)"));
   }
 }
 
@@ -155,6 +172,9 @@ static void handle_line(char *line) {
   } else if (strncmp(line, "store ", 6) == 0) {
     if (parse_addr(line + 6, &addr)) cmd_store(addr);
     else Serial.println(F("usage: store <0..63>"));
+  } else if (strncmp(line, "send ", 5) == 0) {
+    if (parse_addr(line + 5, &addr)) cmd_send(addr);
+    else Serial.println(F("usage: send <0..63>"));
   } else if (strcmp(line, "dump") == 0) {
     cmd_dump();
   } else if (strncmp(line, "clear ", 6) == 0) {
@@ -168,7 +188,7 @@ static void handle_line(char *line) {
   } else if (strcmp(line, "mem") == 0) {
     cmd_mem();
   } else {
-    // Not recognized (includes Phase 4/5 commands like send/raw).
+    // Not recognized (includes Phase 5 commands like `raw on|off`).
     Serial.print(F("Not wired up yet: "));
     Serial.println(line);
     Serial.println(F("Type 'help' for the command list and phase tags."));

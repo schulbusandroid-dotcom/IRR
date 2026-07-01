@@ -21,31 +21,35 @@ remembers up to 64 signals and survives power-off.
 
 ## 2. Status
 
-- **Phase:** Phase 3 (storage — decoded EEPROM) — **code complete; awaiting the
-  human's power-cycle persistence check.** Phase 0/1 confirmed on a Nano clone;
-  **Phase 2 confirmed on hardware** (cheap remote decoded `NEC addr=0x0
-  cmd=0x52 bits=32`; a "fancy" remote correctly hit the overflow-refusal path:
-  `IR: frame too long (overflow) - not stored`).
+- **Phase:** Phase 4 (IR send — decoded) — **code complete; awaiting the human's
+  on-hardware end-to-end check.** Phase 0/1 confirmed on a Nano clone; **Phase 2
+  confirmed on hardware** (cheap remote decoded `NEC addr=0x0 cmd=0x52 bits=32`;
+  a "fancy" remote correctly hit the overflow-refusal path: `IR: frame too long
+  (overflow) - not stored`); **Phase 3 confirmed on hardware** (the cheap
+  remote's signals store into the right slots and survive a power cycle — `dump`
+  shows them appropriately). The "fancy" remote still overflows on READ; that's
+  the Phase 5 raw-capture case, working as designed for now.
 - **Repo:** planning docs + the Arduino sketch in `firmware/`. **Real now:**
   `config.h`, `signal.h`, module APIs, debounced inputs, the LED helpers, the
   banner + button state machine, **IR receive on D2** (`ir_receive()` decoded),
-  and **EEPROM storage** (`storage.*`: format / write / read / is_used / clear /
-  free_bytes; STORE persists `last_received_data`; serial `store`,
-  `show <addr>`, `dump`, `clear`, `format`, `mem`). **Still stubbed:** IR send
-  (`ir_send()` → Ph 4), raw capture + raw EEPROM payloads (Ph 5),
-  OLED (`display.*` → Ph 8).
+  **EEPROM storage** (`storage.*`), and **IR send on D3** (`ir_send()` decoded:
+  STORE→SEND replays a stored decoded signal; serial `send <addr>`; SEND button
+  pulses D13, errors on empty slot / non-transmittable). **Still stubbed:** raw
+  capture + raw EEPROM payloads + raw replay (Ph 5), OLED (`display.*` → Ph 8).
 - **Verified (off-device, no AVR toolchain here):** whole sketch compiles +
   links clean (`-Wall -Wextra`) against mock `Arduino.h`/`EEPROM.h`/
   `IRremote.hpp`; unit tests pass for debounce (**24/24**), `ir_receive`
-  (**16/16**), and **storage (36/36**: format, decoded write/read, in-place
-  same-size overwrite, **persistence across a simulated power cycle**,
-  top-clear reclaim, bad-addr/empty/raw rejection, all-64-slots fill, and
-  memory-full refusal). A scripted serial session runs learn→store→`dump`→
-  `clear` end to end. Real on-hardware persistence is the human's check.
-- **▶ Pending human check (same Phase 2 wiring — no new hardware):** upload,
-  open Serial @115200, `read` a remote, `store 5`, `dump` (slot 5 shown),
-  **unplug & replug**, `dump` again → slot 5 still there. Persistence confirmed.
-- **Branch:** `claude/phase-3-remote-testing-b1zruj`.
+  (**16/16**), **storage (36/36)**, and **ir_send (32/32**: decoded fields
+  forwarded to `IrSender.write`, send flags reset to `IRDATA_FLAGS_EMPTY`,
+  `IrReceiver.restartAfterSend()` called, unsupported-protocol / raw / empty all
+  refused without a bogus transmit, a storage→send round-trip, and the serial
+  `send <addr>` dispatch for used / empty / out-of-range slots). Real
+  on-hardware transmit is the human's check.
+- **▶ Pending human check (needs the IR-LED transmitter wired: transistor + IR
+  LED on D3):** learn a remote (READ), `store 1`, aim the box's IR LED at the
+  device, set switches to 1, press SEND (or `send 1`) → the device responds. Try
+  two devices for the Phase 4 "done when".
+- **Branch:** `claude/arduino-ir-overflow-phase-4-9im90n`.
 
 ---
 
@@ -140,8 +144,8 @@ storage_is_used(addr) / storage_clear(addr) / storage_format / storage_free_byte
 0. Setup & scaffolding — toolchain + skeleton + pin map
 1. Inputs & feedback — buttons, switches→address, LEDs, serial stub
 2. IR receive (decoded) — READ fills `last_received_data`  ✅ hardware-confirmed
-3. Storage interface + EEPROM (decoded) — STORE persists ← **we are here** (code done)
-4. IR send (decoded) — **first end-to-end:** learn→store→send controls a device
+3. Storage interface + EEPROM (decoded) — STORE persists  ✅ hardware-confirmed
+4. IR send (decoded) — learn→store→send controls a device ← **we are here** (code done)
 5. Raw fallback — fancy remotes: capture/store/replay raw; overflow handling
 6. Robustness + debug polish + docs — edge cases, checksum, test checklist
 7. *(future)* External EEPROM backend — full raw capacity for all 64 slots
@@ -175,15 +179,25 @@ storage_is_used(addr) / storage_clear(addr) / storage_format / storage_free_byte
       commands. Bumped to `0.4.0-phase3`. Verified off-device: full sketch
       compiles+links and a storage unit test passes **36/36** (incl. persistence
       across a simulated power cycle); scripted serial session runs end to end.
-- [ ] **▶ Human — Phase 3 persistence test (same wiring, no new hardware):**
-      upload, `read` a remote, `store 5`, `dump` (slot 5 shown), **unplug &
-      replug**, `dump` again → slot 5 still there. Also try `show 5`, `mem`,
-      `clear 5`, `format`. Confirm stored signals survive a power cycle.
-- [ ] **Next session → Phase 4 (IR send, decoded):** implement `ir_send()` for
-      decoded signals, wire SEND to load a slot and transmit via the IR LED on
-      D3 (pulse D13), add the `send <addr>` serial command. First true
-      end-to-end: learn → store → send controls a real device. Needs the IR-LED
-      transmitter wired (transistor + LED on D3).
+- [x] **Phase 3 persistence CONFIRMED ON HARDWARE:** the cheap remote's signals
+      store into the correct slots and survive a power cycle (`dump` shows them
+      appropriately). The "fancy" remote still overflows on READ — expected; raw
+      capture for it is Phase 5.
+- [x] **Phase 4 implemented (IR send, decoded):** `ir_send()` re-encodes a stored
+      decoded signal via `IrSender.write()` and calls `IrReceiver.restartAfterSend()`;
+      wired `handle_send()` (load slot → pulse D13 → transmit → error on empty /
+      non-transmittable) and the serial `send <addr>` command. Bumped to
+      `0.5.0-phase4`. Verified off-device: full sketch compiles+links
+      (`-Wall -Wextra`) and an ir_send unit test passes **32/32**.
+- [ ] **▶ Human — Phase 4 end-to-end test (needs the IR-LED transmitter wired:
+      transistor + IR LED on D3):** READ a remote, `store 1`, aim the box at the
+      device, set switches to 1, press SEND (or `send 1`) → the device responds.
+      Confirm learn → store → send works for at least two real devices.
+- [ ] **Next session → Phase 5 (raw fallback):** capture raw timings when the
+      protocol is UNKNOWN (the "fancy" remote), refuse over-long frames, extend
+      the EEPROM backend to variable-length raw payloads, and replay raw via
+      `IrSender.sendRaw(...)`. This is the direct fix for the fancy-remote
+      overflow.
 
 ---
 
@@ -200,3 +214,5 @@ storage_is_used(addr) / storage_clear(addr) / storage_format / storage_free_byte
 | 2026-07-01 | Claude | **Phase 2 (IR receive, decoded):** brought in IRremote v4.7.1 on D2 — `ir_begin()`, `ir_receive()` (listen-with-timeout, repeat-skip, overflow/unknown handling, writes `*out` only on success), `ir_print_signal()`; wired the READ handler + `read`/`show` serial commands; added `IR_LISTEN_TIMEOUT_MS`; bumped to `0.3.0-phase2`. Verified off-device: full sketch compiles+links against a mock IRremote and a scriptable `ir_receive` test passes 16/16. **Stopped — on-hardware IR decode test (Nano + TSOP on D2) is the human's step.** |
 | 2026-07-01 | Human | **Phase 2 confirmed on hardware (two remotes):** a cheap remote decoded cleanly (`NEC addr=0x0 cmd=0x52 bits=32`); a "fancy" remote produced `IR: frame too long (overflow) - not stored` — i.e. the overflow-refusal path fired as designed (raw capture for such remotes is Phase 5). Green-lit continuing. |
 | 2026-07-01 | Claude | **Phase 3 (storage, decoded EEPROM):** implemented `storage.*` on the onboard EEPROM — first-run format (magic 0x49 / version 1, header stamped last), 64-entry directory + bump-allocated data heap, 7-byte decoded payload, same-size in-place overwrite, `EEPROM.update` to spare write endurance. Wired STORE to `storage_write()` (mem-full → `ERR_MEM_FULL`); added `store`/`show <addr>`/`dump`/`clear`/`format`/`mem` serial commands and a `parse_addr` helper. Bumped to `0.4.0-phase3`. Verified off-device: whole sketch compiles+links (`-Wall -Wextra`) vs mock `Arduino.h`/`EEPROM.h`/`IRremote.hpp`; storage unit test **36/36** (incl. persistence across a simulated power cycle, top-clear reclaim, all-64-fill, memory-full refusal); scripted serial session runs learn→store→dump→clear. **Stopped — on-hardware power-cycle persistence test (Nano) is the human's step.** |
+| 2026-07-01 | Human | **Phase 3 confirmed on hardware:** the cheap remote's signals store into the right save slots and `dump` shows them appropriately, surviving a power cycle. The "fancy" remote still overflows on READ (the Phase 5 raw-capture case). Green-lit Phase 4. |
+| 2026-07-01 | Claude | **Phase 4 (IR send, decoded):** implemented `ir_send()` — rebuilds an `IRData` from the stored decoded fields (protocol/address/command/numberOfBits, flags reset to `IRDATA_FLAGS_EMPTY`), calls `IrSender.write(&data)` (0 = protocol not encodable), then `IrReceiver.restartAfterSend()` to keep the next READ clean; raw replay left for Phase 5. Wired `handle_send()` (load slot → `indicator_sending` around the transmit → `ERR_EMPTY_SLOT` / `ERR_NO_SIGNAL` feedback) and added the serial `send <addr>` command (`cmd_send`). Confirmed `IrSender.begin(sendPin)` in v4.7.1 does NOT grab the built-in LED, so D13 stays our indicator. Bumped to `0.5.0-phase4`. Verified off-device: full sketch compiles+links (`-Wall -Wextra`); ir_send unit test **32/32** (fields forwarded, flags reset, restartAfterSend called, unsupported/raw/empty refused without a bogus transmit, storage→send round-trip, serial `send` dispatch for used/empty/out-of-range). **Stopped — on-hardware end-to-end transmit (Nano + IR-LED transmitter on D3) is the human's step.** |
