@@ -13,7 +13,7 @@
 
 // ---- Firmware identity ----------------------------------------------
 #define FIRMWARE_NAME     "IRR"
-#define FIRMWARE_VERSION  "0.3.0-phase2"
+#define FIRMWARE_VERSION  "0.4.0-phase3"
 
 // ---- Serial ----------------------------------------------------------
 #define SERIAL_BAUD       115200UL
@@ -94,13 +94,23 @@
 #define OLED_HEIGHT         32
 #define OLED_I2C_ADDR       0x3C   // common for 128x32 (some panels: 0x3D)
 
-// ---- Storage (onboard EEPROM) layout — v1 PROPOSAL -------------------
-// Finalized in Phase 3 (decoded) and Phase 5 (raw). See project_plan §3.4.
-// 1 KB EEPROM = [magic][version][64-entry directory][shared data heap].
+// ---- Storage (onboard EEPROM) layout — v1 (decoded finalized) --------
+// Finalized for DECODED in Phase 3; extended for RAW in Phase 5.
+// See project_plan §3.4.  1 KB EEPROM laid out as:
+//   [magic][version][64-entry directory][shared data heap]
 #define EEPROM_MAGIC        0x49   // 'I' — marks a formatted EEPROM
 #define EEPROM_FORMAT_VER   1
 #define EEPROM_HEADER_BYTES 2      // [0] = magic, [1] = version
-#define EEPROM_DIR_ENTRY_SZ 4      // flags, length, offset (2 bytes)
-// (heap start = HEADER + NUM_SLOTS * DIR_ENTRY_SZ; computed in storage.cpp)
+#define EEPROM_DIR_ENTRY_SZ 4      // flags, length, offset (2 bytes LE)
+// (heap start = HEADER + NUM_SLOTS * DIR_ENTRY_SZ = 258; computed in storage.cpp)
+
+// Directory entry byte0 = flags. bit7 marks the slot as used; bit6 marks the
+// payload as raw (raw payloads land in Phase 5). Other bits are reserved 0.
+#define EEPROM_DIR_FLAG_USED 0x80
+#define EEPROM_DIR_FLAG_RAW  0x40
+
+// Serialized size of a DECODED payload in the heap (see storage.cpp):
+// protocol(1) + address(2) + command(2) + numberOfBits(1) + flags(1).
+#define EEPROM_DECODED_BYTES 7
 
 #endif // CONFIG_H

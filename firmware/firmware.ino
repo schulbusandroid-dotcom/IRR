@@ -113,9 +113,18 @@ static void handle_store() {
     indicator_error(ERR_NO_SIGNAL);
     return;
   }
-  // Phase 3/5: storage_write(addr, &last_received_data); error on full heap.
-  Serial.println(F("  -> (storage lands in Phase 3)"));
-  indicator_pulse_sending(60);
+  // Persist the learned signal to EEPROM at the switch address. A decoded
+  // signal always fits; storage_write only fails once the heap is full
+  // (realistic for raw signals in Phase 5, not for decoded).
+  if (storage_write(addr, &last_received_data)) {
+    Serial.print(F("  -> stored ("));
+    Serial.print(storage_free_bytes());
+    Serial.println(F(" free bytes)"));
+    indicator_pulse_sending(60);
+  } else {
+    Serial.println(F("  -> STORE failed (memory full)"));
+    indicator_error(ERR_MEM_FULL);
+  }
 }
 
 // SEND button -> transmit the signal stored at the switch address.

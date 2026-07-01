@@ -8,14 +8,16 @@ remembers up to 64 signals.
 
 ## Status
 
-**Phase 2 — IR receive (code complete; awaiting hardware test).** Phase 1
-(inputs & feedback) is **confirmed working on hardware**. The sketch in
-[`firmware/`](./firmware) prints a serial banner, reads the buttons and address
-switches, and now **learns a decoded IR signal on READ** (IRremote v4.7.1 on
-D2) — reported over serial and via the `read`/`show` commands. Storage and IR
-send are still **stubbed** and get filled in phase by phase (see the plan).
-Next step is the **on-device IR test on an Arduino Nano** with a TSOP receiver
-on D2 — see *Build & upload* below.
+**Phase 3 — Storage (decoded EEPROM): code complete; awaiting the human's
+power-cycle test.** Phases 1 (inputs & feedback) and 2 (decoded IR receive) are
+**confirmed working on hardware**. The sketch in [`firmware/`](./firmware)
+prints a serial banner, reads the buttons and address switches, **learns a
+decoded IR signal on READ** (IRremote v4.7.1 on D2), and now **persists it to
+the onboard EEPROM on STORE** — with `store`/`show <addr>`/`dump`/`clear`/
+`format`/`mem` serial commands. Stored signals survive a power cycle. IR **send**
+is still **stubbed** (Phase 4), as is raw-signal capture (Phase 5). Next step is
+the **power-cycle persistence test on the Nano** — learn, store, unplug/replug,
+`dump` — see *Build & upload* below.
 
 ## Repo layout
 
@@ -27,8 +29,8 @@ firmware/             Arduino sketch — open firmware/firmware.ino in the IDE
   firmware.ino        setup()/loop() + button state machine + banner
   signal.h            LearnedSignal data model (one IR signal in RAM)
   inputs.*            buttons + switches -> address (0..63)
-  ir.*                IR receive / send  (IRremote)        [stub -> Phase 2/4/5]
-  storage.*           storage interface + EEPROM backend   [stub -> Phase 3/5]
+  ir.*                IR receive (done) / send (IRremote)  [receive done; send -> Phase 4/5]
+  storage.*           storage interface + EEPROM backend   [decoded done; raw -> Phase 5]
   indicators.*        sending / error LEDs
   serialcmd.*         serial test/debug interface
 ```
