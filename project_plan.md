@@ -198,7 +198,7 @@ Today this is implemented on the **onboard 1 KB EEPROM**. Later, swapping in an
 external chip (Phase 7) means writing a *new backend* behind the *same*
 functions — nothing else in the project changes.
 
-#### Proposed onboard EEPROM format v1 (tunable in Phases 3 & 5)
+#### Onboard EEPROM format v1 — decoded finalized (Phase 3); raw extends it (Phase 5)
 
 The hard truth: **1 KB cannot hold 64 *raw* signals** (a single TV frame is
 ~70 timing values ≈ 140 bytes; "fancy" remotes are bigger still). So the layout
@@ -208,24 +208,29 @@ heap fills up — at which point STORE reports "memory full" on the error LED an
 serial.
 
 ```
-[0]      MAGIC  (detect first run / wrong format)
-[1]      VERSION
+[0]      MAGIC  (detect first run / wrong format)     — EEPROM_MAGIC 0x49
+[1]      VERSION                                       — EEPROM_FORMAT_VER 1
 [2..257] DIRECTORY: 64 entries × 4 bytes
             byte0: flags  (bit7 = used, bit6 = isRaw)
             byte1: payload length in bytes
-            byte2..3: offset into the data heap
-[258..1023] DATA HEAP (~766 bytes), allocated as signals are stored
+            byte2..3: payload start = absolute EEPROM address (little-endian)
+[258..1023] DATA HEAP (766 bytes), bump-allocated as signals are stored
 ```
 
-- **Decoded payload** ≈ 7 bytes → all 64 slots easily fit (64×7 = 448 B).
-- **Raw payload** = `rawLen` + timing values (2 bytes each) → a few fit.
-- `storage_free_bytes()` is reported over serial so you always know capacity.
-- **Open design point** (decided in Phase 5/6): how to handle *overwriting* an
-  already-used slot without fragmenting the heap. v1 may simply require a
-  `clear`/`format` for reuse; compaction is a documented future improvement.
-
-> Numbers above are a **starting proposal**, not final. They get nailed down
-> (and unit-reasoned) in Phase 3, then extended for raw in Phase 5.
+- **Decoded payload = exactly 7 bytes** (implemented Phase 3):
+  `protocol(1) address(2,LE) command(2,LE) numberOfBits(1) flags(1)` → all 64
+  slots fit easily (64×7 = 448 B, heap is 766 B).
+- **Raw payload** = `rawLen` + timing values (2 bytes each) → a few fit (Phase 5).
+- **Overwrite policy (v1, implemented):** re-storing a slot whose new payload is
+  the **same length** overwrites *in place* (no heap growth) — so re-recording a
+  decoded signal never fragments or grows the heap. A re-store at a *different*
+  length appends at the high-water mark and orphans the old bytes until the next
+  `format()`. For decoded-only Phase 3 this never happens (fixed 7 bytes);
+  compaction remains a documented future improvement for variable-length raw.
+- `storage_free_bytes()` = EEPROM size − heap high-water mark, reported over
+  serial (`mem`, and after every `store`) so you always know capacity. The
+  high-water mark is recomputed from the directory, so clearing the top
+  allocation reclaims its space automatically.
 
 ### 3.5 Handling "fancy" remotes gracefully
 
@@ -349,11 +354,27 @@ like `NEC addr=0x00 cmd=0x45`. Different buttons → different commands.
 ### Phase 3 — Storage interface + EEPROM backend (decoded only)
 **Goal:** STORE persists decoded signals; they survive a power cycle.
 
-- [ ] Implement the `storage_*` interface (§3.4) with the EEPROM backend.
-- [ ] First-run **format** (magic/version), directory + heap allocation.
-- [ ] **STORE**: `addr = switches`; write `last_received_data`; error if empty.
-- [ ] Serial: `store <addr>`, `dump` (list all slots), `show <addr>`,
-      `clear <addr>`, `format`, `mem` (free bytes).
+- [x] Implement the `storage_*` interface (§3.4) with the EEPROM backend.
+      *(`storage.cpp`: header + 64-entry directory + bump-allocated heap;
+      all byte writes via `EEPROM.update()` to protect write endurance.)*
+- [x] First-run **format** (magic/version), directory + heap allocation.
+      *(`storage_begin()` re-formats on wrong magic/version; `storage_format()`
+      clears the directory, then stamps the header **last** so a power loss
+      mid-format simply re-formats next boot.)*
+- [x] **STORE**: `addr = switches`; write `last_received_data`; error if empty.
+      *(`handle_store()` now calls `storage_write()`; empty → error LED,
+      heap-full → `ERR_MEM_FULL`. Re-recording a decoded signal overwrites the
+      same slot in place — the 7-byte payload never grows the heap.)*
+- [x] Serial: `store <addr>`, `dump` (list all slots), `show <addr>`,
+      `clear <addr>`, `format`, `mem` (free bytes). *(all live in `serialcmd.cpp`.)*
+
+> **Code complete; awaiting the human's power-cycle check (same Phase 2 wiring —
+> no new hardware).** Verified off-device: the whole sketch compiles + links
+> clean (`-Wall -Wextra`) against mock `Arduino.h`/`EEPROM.h`/`IRremote.hpp`,
+> a storage unit test passes **36/36** (format, decoded write/read, in-place
+> overwrite, **persistence across a simulated power cycle**, top-clear reclaim,
+> bad-addr/empty/raw rejection, all-64-slots fill, memory-full refusal), and a
+> scripted serial session runs learn→store→`dump`→`clear` end to end.
 
 **How to test:** READ a remote → STORE at address 5 → `dump` shows slot 5 used →
 **unplug & replug** → `dump` still shows slot 5. Persistence confirmed.
@@ -511,10 +532,12 @@ catch errors before you upload — but this is optional and never required.
 
 ## 7. Open questions / decisions deferred (revisit when relevant)
 
-- Exact EEPROM byte format finalized in **Phase 3** (decoded) and **Phase 5**
-  (raw) once real signal sizes are measured.
-- Overwrite/fragmentation policy for re-storing a used slot — decided in
-  **Phase 5/6** (simplest first: require `clear`/`format` to reuse).
+- Exact EEPROM byte format: **decoded finalized in Phase 3** (7-byte payload,
+  see §3.4); raw layout finalized in **Phase 5** once real sizes are measured.
+- Overwrite/fragmentation policy: **v1 implemented (Phase 3)** — same-length
+  re-store overwrites in place; a different-length re-store orphans old bytes
+  until `format()`. Heap compaction stays a documented future improvement,
+  revisited in **Phase 5/6** when variable-length raw payloads make it matter.
 - Whether to add the external EEPROM (**Phase 7**) — depends on whether you hit
   the onboard limit in practice with the remotes you care about.
 - Error-LED blink patterns — finalized in **Phase 6**.
