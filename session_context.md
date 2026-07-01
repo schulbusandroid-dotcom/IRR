@@ -21,25 +21,29 @@ remembers up to 64 signals and survives power-off.
 
 ## 2. Status
 
-- **Phase:** Phase 1 (Inputs & feedback) — **code complete; awaiting first
-  on-hardware test.** Phase 0 scaffolding is done.
+- **Phase:** Phase 2 (IR receive, decoded) — **code complete; awaiting
+  on-hardware test.** Phase 0 + **Phase 1 confirmed working on a Nano clone**
+  (upload, serial, buttons, switch→address, both LEDs — all green).
 - **Repo:** planning docs + the Arduino sketch in `firmware/`. **Real now:**
-  `config.h`, `signal.h`, the module APIs, `inputs_read_address()`, **debounced
-  `inputs_poll()` + `inputs_poll_address()`**, the LED helpers (`indicator_*`,
-  incl. `indicator_pulse_sending()`), the serial `help`/`switches` commands, the
-  banner, and the **button state machine** (READ acks; STORE/SEND already take
-  the real "nothing learned" / "slot empty" error paths). **Still stubbed:**
-  IR (`ir.*` → Ph 2/4/5), storage (`storage.*` → Ph 3/5), OLED (`display.*` → Ph 8).
-- **Verified (off-device):** whole sketch compiles + links clean (`-Wall
-  -Wextra`) against a mock `Arduino.h`; a scriptable unit test drives the
-  debounce through press/hold/release, sub-debounce bounce, simultaneous
-  presses, and address changes (**24/24 assertions pass**). No AVR toolchain
-  here, so the real upload is the human's check.
-- **▶ Pending human check (FIRST hardware upload — Arduino Nano):** upload
-  `firmware/firmware.ino`, open Serial @115200, confirm the banner + `help`
-  (Phase 0), then wire buttons/switches/error-LED and confirm presses print
-  one line each and the address tracks the DIP switches (Phase 1 "Done when").
-- **Branch:** `claude/arduino-nano-hardware-upload-ajbcd9`.
+  `config.h`, `signal.h`, module APIs, debounced `inputs_poll()` /
+  `inputs_poll_address()`, the LED helpers, the serial interface
+  (`help`/`switches`/**`read`**/**`show`**), the banner, the button state
+  machine, and **IR receive on D2** (`ir_begin()`, `ir_receive()` decoded path,
+  `ir_print_signal()` via IRremote v4.7.1). **Still stubbed:** IR send
+  (`ir_send()` → Ph 4), storage (`storage.*` → Ph 3/5), raw capture (Ph 5),
+  OLED (`display.*` → Ph 8).
+- **Verified (off-device, no AVR toolchain here):** whole sketch compiles +
+  links clean (`-Wall -Wextra`) against mock `Arduino.h` + mock `IRremote.hpp`;
+  scriptable unit tests pass for debounce (**24/24**) and `ir_receive`
+  (**16/16**: decoded field-mapping, repeat-skip, overflow-refusal, unknown,
+  timeout, stale-frame flush — all leaving `last_received_data` intact on
+  failure). Real IRremote compile + on-air decode is the human's check.
+- **▶ Pending human check (Arduino Nano + TSOP receiver on D2):** wire the IR
+  receiver (V→5V, GND→GND, OUT→D2, 100 nF across V/GND), upload, open Serial
+  @115200, `read` (or press READ), aim a TV remote → expect a line like
+  `NEC addr=0x.. cmd=0x..`; different buttons → different commands. Needs the
+  **IRremote v4.7.1** library installed (already done, per §3).
+- **Branch:** `claude/arduino-nano-hardware-upload-ajbcd9` · **PR:** #1.
 
 ---
 
@@ -150,21 +154,23 @@ storage_is_used(addr) / storage_clear(addr) / storage_format / storage_free_byte
 - [x] Human installed **IRremote v4.7.1** (recorded in §3).
 - [x] **OLED folded into plan** (optional): A4/A5 reserved, `display.*` no-op
       stub + `USE_OLED` flag in `config.h`, Phase 8 added. Off by default.
-- [x] **Phase 1 implemented:** debounced `inputs_poll()` + `inputs_poll_address()`,
-      button events + address changes printed over serial, `indicator_pulse_sending()`
-      added, button handlers take their real error paths. Compiles + unit-tested
-      off-device (24/24).
-- [ ] **▶ Human — FIRST hardware upload (Arduino Nano):** open `firmware/firmware.ino`
-      in the Arduino IDE, select **Nano** + port, **Upload**. Serial @115200:
-      see the banner, type `help`/`switches`. Then wire the 3 buttons (D4/D5/D6),
-      6 DIP switches (D7–D12), and the error LED (A0); confirm each press prints
-      one line, STORE/SEND flash the error LED, and flipping switches updates the
-      address. (D13 onboard LED pulses on a press with no extra wiring.)
-- [ ] **Next session → Phase 2 (IR receive):** wire up IRremote per plan §3.6
-      (`#include "config.h"` for `RAW_BUFFER_LENGTH`, then `<IRremote.hpp>` once),
-      implement `ir_begin()`/`ir_receive()` decoded path on D2, and make `handle_read()`
-      fill `last_received_data`. Needs the TSOP receiver wired — hold until the
-      Phase 1 hardware check above is green.
+- [x] **Phase 1 implemented + CONFIRMED ON HARDWARE** (Nano clone): debounced
+      buttons, switch→address, both LEDs, serial — all working.
+- [x] **Phase 2 implemented:** IRremote v4.7.1 receive on D2 — `ir_begin()`,
+      `ir_receive()` (blocking listen-with-timeout, repeat-skip, overflow/unknown
+      handling, only writes on success), `ir_print_signal()`, `read`/`show`
+      serial commands, READ handler with LED feedback. Compiles + unit-tested
+      off-device (16/16).
+- [ ] **▶ Human — Phase 2 hardware test (Nano + TSOP on D2):** wire the IR
+      receiver (V→5V, GND→GND, OUT→D2, 100 nF across V/GND), upload, open Serial
+      @115200, type `read` (or press READ) and aim a TV remote → expect e.g.
+      `NEC addr=0x.. cmd=0x..`; different buttons → different commands; `show`
+      re-prints the last. Confirm a few common remotes decode cleanly.
+- [ ] **Next session → Phase 3 (storage, decoded):** implement the `storage_*`
+      EEPROM backend (first-run format, directory + heap), wire STORE to persist
+      `last_received_data`, add `store`/`dump`/`clear`/`format`/`mem` serial
+      commands. No new hardware — testable on the same wiring (plus a power-cycle
+      to prove persistence).
 
 ---
 
@@ -177,3 +183,5 @@ storage_is_used(addr) / storage_clear(addr) / storage_format / storage_free_byte
 | 2026-06-19 | Claude | **Phase 0 scaffolding:** created `firmware/` (config.h, signal.h, module stubs, banner, serial help/switches) + root `README.md`. Compiles clean under g++ mock; device logic stubbed for Phase 1+. |
 | 2026-06-19 | Claude | Folded in **optional I²C OLED** (SSD1306 128×32): reserved A4/A5, added `display.*` no-op stub + `USE_OLED` flag, BOM/pin-map/risk/glossary notes, and **Phase 8**. Build still compiles with `USE_OLED 0`. |
 | 2026-06-28 | Claude | **Phase 1 (Inputs & feedback):** implemented debounced `inputs_poll()` + `inputs_poll_address()`, button/address events over serial, `indicator_pulse_sending()`, and real button handlers (READ acks; STORE/SEND take "nothing learned"/"slot empty" error paths). Bumped version to `0.2.0-phase1`. Verified off-device: full sketch compiles+links (`-Wall -Wextra`) and a scriptable debounce unit test passes 24/24. **Stopped here — first on-hardware upload/test (Nano) is now the human's step.** |
+| 2026-07-01 | Human | **Phase 1 confirmed on a Nano clone:** upload OK, serial works, buttons read, switch binary→address mapping correct, both feedback LEDs work. Green-lit continuing. |
+| 2026-07-01 | Claude | **Phase 2 (IR receive, decoded):** brought in IRremote v4.7.1 on D2 — `ir_begin()`, `ir_receive()` (listen-with-timeout, repeat-skip, overflow/unknown handling, writes `*out` only on success), `ir_print_signal()`; wired the READ handler + `read`/`show` serial commands; added `IR_LISTEN_TIMEOUT_MS`; bumped to `0.3.0-phase2`. Verified off-device: full sketch compiles+links against a mock IRremote and a scriptable `ir_receive` test passes 16/16. **Stopped — on-hardware IR decode test (Nano + TSOP on D2) is the human's step.** |

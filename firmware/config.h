@@ -13,7 +13,7 @@
 
 // ---- Firmware identity ----------------------------------------------
 #define FIRMWARE_NAME     "IRR"
-#define FIRMWARE_VERSION  "0.2.0-phase1"
+#define FIRMWARE_VERSION  "0.3.0-phase2"
 
 // ---- Serial ----------------------------------------------------------
 #define SERIAL_BAUD       115200UL
@@ -78,6 +78,10 @@
 
 // Carrier frequency (kHz) used when replaying a RAW signal.
 #define IR_SEND_KHZ         38
+
+// After READ, how long to listen for one IR frame before giving up (ms).
+// Blocking window: press READ, then aim the remote and press a button.
+#define IR_LISTEN_TIMEOUT_MS  5000UL
 
 // ---- Optional OLED display (I2C SSD1306 128x32) ---------------------
 // OFF by default, so the build stays lean until you wire the panel and

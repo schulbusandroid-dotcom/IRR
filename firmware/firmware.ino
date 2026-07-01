@@ -82,11 +82,24 @@ static void print_banner() {
 }
 
 // READ button -> learn a signal into last_received_data.
+// ir_receive() prints the details; here we pick the LED feedback. It only
+// overwrites last_received_data on a successful decode, so a failed READ
+// leaves whatever was already learned intact.
 static void handle_read() {
-  // Phase 2/5 will replace this with: if (ir_receive(&last_received_data))
-  // report the decoded/raw signal, else indicator_error(ERR_NO_SIGNAL).
-  Serial.println(F("READ  (IR capture lands in Phase 2)"));
-  indicator_pulse_sending(60);     // quick "press registered" blink on D13
+  switch (ir_receive(&last_received_data)) {
+    case IR_READ_DECODED:
+    case IR_READ_RAW:              // (raw arrives in Phase 5)
+      indicator_pulse_sending(60); // success blink on D13
+      break;
+    case IR_READ_OVERFLOW:
+      indicator_error(ERR_OVERFLOW);
+      break;
+    case IR_READ_NONE:
+    case IR_READ_UNDECODED:
+    default:
+      indicator_error(ERR_NO_SIGNAL);
+      break;
+  }
 }
 
 // STORE button -> save last_received_data at the switch address.
