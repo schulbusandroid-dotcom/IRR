@@ -11,9 +11,9 @@
 // Initialize storage; format on first run (magic/version check).
 void storage_begin();
 
-// Save `sig` to slot `addr` (0..NUM_SLOTS-1). Returns false if the slot
-// is invalid or there is not enough room.
-//   [Phase 3 decoded, Phase 5 raw + "memory full"]
+// Save `sig` to slot `addr` (0..NUM_SLOTS-1). Handles DECODED (7 bytes) and
+// RAW (rawLen tick bytes) signals. Returns false if the slot is invalid, the
+// signal is empty, or the data heap is full ("memory full").
 bool storage_write(uint8_t addr, const LearnedSignal *sig);
 
 // Load slot `addr` into *out. Returns false if the slot is empty/invalid.

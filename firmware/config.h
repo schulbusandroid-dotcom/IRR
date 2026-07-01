@@ -13,7 +13,7 @@
 
 // ---- Firmware identity ----------------------------------------------
 #define FIRMWARE_NAME     "IRR"
-#define FIRMWARE_VERSION  "0.5.0-phase4"
+#define FIRMWARE_VERSION  "0.6.0-phase5"
 
 // ---- Serial ----------------------------------------------------------
 #define SERIAL_BAUD       115200UL
@@ -72,8 +72,9 @@
 #define RAW_BUFFER_LENGTH   200
 #endif
 
-// Max raw timing entries kept in a LearnedSignal in RAM.
-// sizeof(LearnedSignal) grows by 2 bytes per entry — watch RAM on the Uno.
+// Max raw timing entries kept in a LearnedSignal in RAM. Each entry is one
+// byte (a 50 us tick — see signal.h), so sizeof(LearnedSignal) grows by 1 byte
+// per entry. Kept equal to RAW_BUFFER_LENGTH so any non-overflowing frame fits.
 #define RAW_MAX_TIMINGS     RAW_BUFFER_LENGTH
 
 // Carrier frequency (kHz) used when replaying a RAW signal.
@@ -94,9 +95,10 @@
 #define OLED_HEIGHT         32
 #define OLED_I2C_ADDR       0x3C   // common for 128x32 (some panels: 0x3D)
 
-// ---- Storage (onboard EEPROM) layout — v1 (decoded finalized) --------
-// Finalized for DECODED in Phase 3; extended for RAW in Phase 5.
-// See project_plan §3.4.  1 KB EEPROM laid out as:
+// ---- Storage (onboard EEPROM) layout — v1 (decoded + raw) ------------
+// Finalized for DECODED in Phase 3; RAW added in Phase 5 without a format
+// bump — raw simply uses the directory's RAW flag + length, so v1 EEPROMs
+// written by Phase 3/4 stay readable. See project_plan §3.4.  1 KB EEPROM:
 //   [magic][version][64-entry directory][shared data heap]
 #define EEPROM_MAGIC        0x49   // 'I' — marks a formatted EEPROM
 #define EEPROM_FORMAT_VER   1
@@ -105,12 +107,15 @@
 // (heap start = HEADER + NUM_SLOTS * DIR_ENTRY_SZ = 258; computed in storage.cpp)
 
 // Directory entry byte0 = flags. bit7 marks the slot as used; bit6 marks the
-// payload as raw (raw payloads land in Phase 5). Other bits are reserved 0.
+// payload as raw. Other bits are reserved 0.
 #define EEPROM_DIR_FLAG_USED 0x80
 #define EEPROM_DIR_FLAG_RAW  0x40
 
 // Serialized size of a DECODED payload in the heap (see storage.cpp):
 // protocol(1) + address(2) + command(2) + numberOfBits(1) + flags(1).
+// A RAW payload instead is exactly `rawLen` bytes (one 50 us tick each); the
+// directory entry's length field carries that count, so no separate length
+// byte is stored in the heap.
 #define EEPROM_DECODED_BYTES 7
 
 #endif // CONFIG_H

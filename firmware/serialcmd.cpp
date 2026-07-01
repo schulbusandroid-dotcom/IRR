@@ -32,7 +32,7 @@ void serialcmd_print_help() {
   Serial.println(F("  clear <addr>  - free a slot"));
   Serial.println(F("  format        - wipe all storage"));
   Serial.println(F("  mem           - free storage bytes + slots in use"));
-  Serial.println(F("  raw on|off    - [Phase 5] verbose raw logging"));
+  Serial.println(F("  raw on|off    - [Phase 6] verbose raw-timing logging"));
 }
 
 // Parse a decimal slot address after a command word. Accepts leading/trailing
@@ -188,7 +188,7 @@ static void handle_line(char *line) {
   } else if (strcmp(line, "mem") == 0) {
     cmd_mem();
   } else {
-    // Not recognized (includes Phase 5 commands like `raw on|off`).
+    // Not recognized (includes Phase 6 commands like `raw on|off`).
     Serial.print(F("Not wired up yet: "));
     Serial.println(line);
     Serial.println(F("Type 'help' for the command list and phase tags."));

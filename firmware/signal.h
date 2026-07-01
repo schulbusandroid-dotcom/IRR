@@ -25,8 +25,13 @@ struct LearnedSignal {
   uint8_t  flags;
 
   // ---- when type == SIGNAL_RAW ----
+  // Timings are stored as IRremote "ticks" of MICROS_PER_TICK (50 us) each,
+  // one byte per mark/space. That is the receiver's native resolution and
+  // halves the RAM/EEPROM footprint vs. raw microseconds — important on a
+  // 2 KB / 1 KB chip. capture: compensateAndStoreIRResultInArray(); replay:
+  // the uint8_t IrSender.sendRaw() overload (see ir.cpp).
   uint8_t  rawLen;                  // number of timing entries actually used
-  uint16_t raw[RAW_MAX_TIMINGS];    // durations in microseconds
+  uint8_t  raw[RAW_MAX_TIMINGS];    // durations as 50 us ticks (0..255)
 };
 
 // Reset a signal back to empty.

@@ -7,19 +7,19 @@
 // Outcome of one READ capture attempt.
 enum IrReadResult : uint8_t {
   IR_READ_DECODED   = 0,   // *out filled with a DECODED signal
-  IR_READ_RAW       = 1,   // *out filled with a RAW signal          (Phase 5)
+  IR_READ_RAW       = 1,   // *out filled with a RAW signal (unknown protocol)
   IR_READ_NONE      = 2,   // listen window timed out, nothing arrived
-  IR_READ_UNDECODED = 3,   // a frame arrived but protocol was UNKNOWN (raw: Phase 5)
+  IR_READ_UNDECODED = 3,   // an unknown frame arrived but had no usable timings
   IR_READ_OVERFLOW  = 4,   // frame too long for RAW_BUFFER_LENGTH — not stored
 };
 
 // Initialize the IR receiver (D2) and sender (D3).
 void ir_begin();
 
-// READ: listen up to IR_LISTEN_TIMEOUT_MS for one clean IR frame. On a good
-// decode, fills *out as DECODED and returns IR_READ_DECODED; otherwise leaves
-// *out untouched and returns the reason. Prints a human-readable line either
-// way.   [Phase 2 decoded; Phase 5 adds the raw fallback]
+// READ: listen up to IR_LISTEN_TIMEOUT_MS for one clean IR frame. A known
+// protocol fills *out as DECODED (IR_READ_DECODED); an unknown one is captured
+// as RAW timings (IR_READ_RAW). On any failure (none/undecoded/overflow) *out
+// is left untouched. Prints a human-readable line either way.
 IrReadResult ir_receive(LearnedSignal *out);
 
 // Pretty-print a learned signal (decoded / raw / empty) to Serial. Shared by
